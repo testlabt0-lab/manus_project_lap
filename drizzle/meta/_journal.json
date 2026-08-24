@@ -15,6 +15,20 @@
       "when": 1787595455525,
       "tag": "0001_long_black_panther",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787597125924,
+      "tag": "0002_naive_paper_doll",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1787597326496,
+      "tag": "0003_dazzling_toro",
+      "breakpoints": true
     }
   ]
 }

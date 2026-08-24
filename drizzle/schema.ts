@@ -31,6 +31,7 @@ export const visits = mysqlTable("visits", {
   id: int("id").autoincrement().primaryKey(),
   reference: varchar("reference", { length: 24 }).notNull().unique(),
   patientId: int("patientId").notNull(),
+  clinicId: int("clinicId").notNull().default(1),
   clinicName: varchar("clinicName", { length: 160 }).notNull(),
   serviceName: varchar("serviceName", { length: 160 }).notNull(),
   districtLabel: varchar("districtLabel", { length: 180 }).notNull(),
@@ -64,6 +65,35 @@ export const visitAssignments = mysqlTable("visit_assignments", {
 }, table => [
   index("visit_assignments_visit_idx").on(table.visitId),
 ]);
+
+export const clinicMemberships = mysqlTable("clinic_memberships", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().default(1),
+  clinicName: varchar("clinicName", { length: 160 }).notNull(),
+  userId: int("userId").notNull(),
+  memberRole: mysqlEnum("memberRole", ["MANAGER", "CLINICIAN", "NURSE"]).notNull(),
+  status: mysqlEnum("status", ["ACTIVE", "INACTIVE"]).default("ACTIVE").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("clinic_memberships_user_status_idx").on(table.userId, table.status),
+]);
+
+export const medicalReports = mysqlTable("medical_reports", {
+  id: int("id").autoincrement().primaryKey(),
+  visitId: int("visitId").notNull().unique(),
+  status: mysqlEnum("status", ["FINALIZED"]).default("FINALIZED").notNull(),
+  summary: text("summary").notNull(),
+  finalizedAt: timestamp("finalizedAt").defaultNow().notNull(),
+});
+
+export const invoices = mysqlTable("invoices", {
+  id: int("id").autoincrement().primaryKey(),
+  visitId: int("visitId").notNull().unique(),
+  invoiceNo: varchar("invoiceNo", { length: 32 }).notNull().unique(),
+  totalHalalas: int("totalHalalas").notNull(),
+  status: mysqlEnum("status", ["DUE", "PAID"]).default("DUE").notNull(),
+  issuedAt: timestamp("issuedAt").defaultNow().notNull(),
+});
 
 export type Visit = typeof visits.$inferSelect;
 export type VisitState = (typeof visitStates)[number];

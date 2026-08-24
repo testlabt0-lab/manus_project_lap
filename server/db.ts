@@ -1,6 +1,6 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, clinicMemberships, invoices, medicalReports, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -71,6 +71,15 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     await db.insert(users).values(values).onDuplicateKeyUpdate({
       set: updateSet,
     });
+    if (user.openId === ENV.ownerOpenId) {
+      const storedUser = await getUserByOpenId(user.openId);
+      if (storedUser) {
+        const existingMembership = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, storedUser.id), eq(clinicMemberships.clinicId, 1))).limit(1);
+        if (!existingMembership[0]) {
+          await db.insert(clinicMemberships).values({ clinicId: 1, clinicName: "عيادة الحياة", userId: storedUser.id, memberRole: "MANAGER", status: "ACTIVE" });
+        }
+      }
+    }
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -95,10 +104,13 @@ export async function listVisitsForPatient(patientId: number) {
   return db.select().from(visits).where(eq(visits.patientId, patientId)).orderBy(desc(visits.scheduledStart));
 }
 
-export async function listOperationalVisits() {
+export async function listOperationalVisits(userId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(visits).orderBy(desc(visits.scheduledStart));
+  const memberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, userId), eq(clinicMemberships.status, "ACTIVE")));
+  const clinicIds = memberships.map(membership => membership.clinicId);
+  if (clinicIds.length === 0) return [];
+  return db.select().from(visits).where(inArray(visits.clinicId, clinicIds)).orderBy(desc(visits.scheduledStart));
 }
 
 export async function getVisitForPatient(visitId: number, patientId: number) {
@@ -135,6 +147,8 @@ export async function assignVisit(input: { visitId: number; assignedByUserId: nu
   if (!db) throw new Error("Database is not available");
   const current = (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
   if (!current || current.state !== "REQUESTED") return undefined;
+  const membership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.assignedByUserId), eq(clinicMemberships.clinicId, current.clinicId), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
+  if (!membership) return undefined;
   await db.transaction(async tx => {
     await tx.insert(visitAssignments).values({ visitId: input.visitId, assignedByUserId: input.assignedByUserId, assigneeLabel: input.assigneeLabel });
     await tx.update(visits).set({ state: "ASSIGNED" }).where(eq(visits.id, input.visitId));
@@ -148,9 +162,37 @@ export async function transitionVisit(input: { visitId: number; changedByUserId:
   if (!db) throw new Error("Database is not available");
   const current = (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
   if (!current) return undefined;
+  const membership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.changedByUserId), eq(clinicMemberships.clinicId, current.clinicId), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
+  if (!membership) return undefined;
   await db.transaction(async tx => {
     await tx.update(visits).set({ state: input.nextState }).where(eq(visits.id, input.visitId));
     await tx.insert(visitStatusHistory).values({ visitId: input.visitId, fromState: current.state, toState: input.nextState, changedByUserId: input.changedByUserId });
+    if (input.nextState === "COMPLETED") {
+      await tx.insert(medicalReports).values({ visitId: input.visitId, summary: "ملخص عرض تجريبي للزيارة المكتملة. لا يتضمن هذا السجل أي بيانات سريرية حقيقية." });
+      await tx.insert(invoices).values({ visitId: input.visitId, invoiceNo: `INV-${current.reference.replace("V-", "")}`, totalHalalas: 27000, status: "DUE" });
+    }
   });
   return (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
+}
+
+export async function getReportForPatient(visitId: number, patientId: number) {
+  const visit = await getVisitForPatient(visitId, patientId);
+  if (!visit || visit.state !== "COMPLETED") return undefined;
+  const db = await getDb();
+  if (!db) return undefined;
+  return (await db.select().from(medicalReports).where(eq(medicalReports.visitId, visitId)).limit(1))[0];
+}
+
+export async function getInvoiceForPatient(visitId: number, patientId: number) {
+  const visit = await getVisitForPatient(visitId, patientId);
+  if (!visit || visit.state !== "COMPLETED") return undefined;
+  const db = await getDb();
+  if (!db) return undefined;
+  return (await db.select().from(invoices).where(eq(invoices.visitId, visitId)).limit(1))[0];
+}
+
+export async function listActiveMembershipsForUser(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, userId), eq(clinicMemberships.status, "ACTIVE")));
 }
