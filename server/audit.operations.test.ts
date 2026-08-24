@@ -29,6 +29,18 @@ describe("audit operations", () => {
     expect(mocks.listAuditEventsForManager).toHaveBeenCalledWith(71, filter);
   });
 
+  it("passes a bounded text query to the manager-scoped audit query", async () => {
+    mocks.listAuditEventsForManager.mockResolvedValue([]);
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.audit.listOperations({ query: "V-1024" })).resolves.toEqual([]);
+    expect(mocks.listAuditEventsForManager).toHaveBeenCalledWith(71, { query: "V-1024" });
+  });
+
+  it("rejects an audit query shorter than two characters", async () => {
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.audit.listOperations({ query: "أ" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("rejects an inverted audit date window before querying the data layer", async () => {
     const caller = appRouter.createCaller(context("admin"));
     await expect(caller.audit.listOperations({ from: new Date("2026-08-31T00:00:00.000Z"), to: new Date("2026-08-01T00:00:00.000Z") })).rejects.toMatchObject({ code: "BAD_REQUEST" });

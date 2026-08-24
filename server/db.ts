@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, medicalReports, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -158,7 +158,7 @@ export async function listManagedStaffMemberships(managerUserId: number) {
   });
 }
 
-export async function listAuditEventsForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date } = {}) {
+export async function listAuditEventsForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date; query?: string } = {}) {
   const db = await getDb();
   if (!db) return [];
   const managerMemberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
@@ -169,6 +169,7 @@ export async function listAuditEventsForManager(managerUserId: number, filter: {
     filter.eventType ? eq(auditEvents.eventType, filter.eventType) : undefined,
     filter.from ? gte(auditEvents.createdAt, filter.from) : undefined,
     filter.to ? lte(auditEvents.createdAt, filter.to) : undefined,
+    filter.query ? like(auditEvents.summary, `%${filter.query}%`) : undefined,
   )).orderBy(desc(auditEvents.createdAt)).limit(50);
   const actorIds = Array.from(new Set(events.map(event => event.actorUserId)));
   if (actorIds.length === 0) return [];

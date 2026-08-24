@@ -70,7 +70,7 @@ export const appRouter = router({
     }),
   }),
   audit: router({
-    listOperations: adminProcedure.input(z.object({ eventType: z.enum(auditEventTypes).optional(), from: z.date().optional(), to: z.date().optional() }).optional()).query(({ ctx, input }) => {
+    listOperations: adminProcedure.input(z.object({ eventType: z.enum(auditEventTypes).optional(), from: z.date().optional(), to: z.date().optional(), query: z.string().trim().min(2).max(80).optional() }).optional()).query(({ ctx, input }) => {
       if (input?.from && input.to && input.from > input.to) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid audit date range" });
       return listAuditEventsForManager(ctx.user.id, input);
     }),
