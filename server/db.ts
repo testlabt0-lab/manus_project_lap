@@ -142,6 +142,33 @@ export async function listStaffForOperationalClinics(userId: number) {
   });
 }
 
+export async function listManagedStaffMemberships(managerUserId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const managerMemberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
+  const clinicIds = managerMemberships.map(membership => membership.clinicId);
+  if (clinicIds.length === 0) return [];
+  const staffMemberships = await db.select().from(clinicMemberships).where(and(inArray(clinicMemberships.clinicId, clinicIds), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"])));
+  const staffUserIds = Array.from(new Set(staffMemberships.map(membership => membership.userId)));
+  if (staffUserIds.length === 0) return [];
+  const staffUsers = await db.select().from(users).where(inArray(users.id, staffUserIds));
+  return staffMemberships.flatMap(membership => {
+    const staffUser = staffUsers.find(candidate => candidate.id === membership.userId);
+    return staffUser ? [{ membershipId: membership.id, userId: staffUser.id, displayName: staffUser.name ?? "عضو فريق", clinicId: membership.clinicId, clinicName: membership.clinicName, memberRole: membership.memberRole, status: membership.status }] : [];
+  });
+}
+
+export async function setManagedStaffMembershipStatus(input: { managerUserId: number; membershipId: number; status: "ACTIVE" | "INACTIVE" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const staffMembership = (await db.select().from(clinicMemberships).where(eq(clinicMemberships.id, input.membershipId)).limit(1))[0];
+  if (!staffMembership || (staffMembership.memberRole !== "CLINICIAN" && staffMembership.memberRole !== "NURSE")) return undefined;
+  const managerMembership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.managerUserId), eq(clinicMemberships.clinicId, staffMembership.clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
+  if (!managerMembership) return undefined;
+  await db.update(clinicMemberships).set({ status: input.status }).where(eq(clinicMemberships.id, input.membershipId));
+  return (await db.select().from(clinicMemberships).where(eq(clinicMemberships.id, input.membershipId)).limit(1))[0];
+}
+
 export async function ensureDemoClinicianForOperationalClinic(managerUserId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
