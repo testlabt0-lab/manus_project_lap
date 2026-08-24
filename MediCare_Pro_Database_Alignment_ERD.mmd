@@ -1,0 +1,169 @@
+erDiagram
+    USERS {
+        uuid id PK
+        varchar email UK
+        varchar phone UK
+        varchar display_name
+        enum account_status
+        int authz_version
+        timestamp created_at
+    }
+    USER_SESSIONS {
+        uuid id PK
+        uuid user_id FK
+        varchar refresh_token_hash
+        timestamp expires_at
+        timestamp revoked_at
+    }
+    PATIENT_PROFILES {
+        uuid id PK
+        uuid user_id FK
+        varchar national_id_hash
+        varchar preferred_language
+        timestamp created_at
+    }
+    ADDRESSES {
+        uuid id PK
+        uuid patient_id FK
+        varchar label
+        text encrypted_address
+        decimal latitude
+        decimal longitude
+        boolean is_default
+        timestamp deleted_at
+    }
+    CONSENTS {
+        uuid id PK
+        uuid patient_id FK
+        enum purpose
+        enum status
+        timestamp granted_at
+        timestamp withdrawn_at
+    }
+    CLINICS {
+        uuid id PK
+        varchar name
+        enum status
+        varchar city
+        timestamp created_at
+    }
+    CLINIC_MEMBERSHIPS {
+        uuid id PK
+        uuid clinic_id FK
+        uuid user_id FK
+        enum role
+        enum membership_status
+        timestamp joined_at
+    }
+    CLINIC_SERVICES {
+        uuid id PK
+        uuid clinic_id FK
+        varchar name
+        int duration_minutes
+        decimal base_price
+        boolean is_active
+    }
+    VISITS {
+        uuid id PK
+        varchar reference_no UK
+        uuid patient_id FK
+        uuid clinic_id FK
+        uuid clinic_service_id FK
+        uuid address_id FK
+        enum state
+        timestamp requested_for
+        timestamp scheduled_start_at
+        text encrypted_patient_note
+        timestamp created_at
+    }
+    VISIT_ASSIGNMENTS {
+        uuid id PK
+        uuid visit_id FK
+        uuid membership_id FK
+        enum assignment_role
+        enum status
+        timestamp accepted_at
+    }
+    VISIT_STATUS_HISTORY {
+        uuid id PK
+        uuid visit_id FK
+        uuid changed_by_user_id FK
+        enum from_state
+        enum to_state
+        timestamp occurred_at
+    }
+    MEDICAL_REPORTS {
+        uuid id PK
+        uuid visit_id FK
+        uuid authored_by_membership_id FK
+        enum status
+        text encrypted_content
+        timestamp finalized_at
+    }
+    REPORT_AMENDMENTS {
+        uuid id PK
+        uuid report_id FK
+        uuid authored_by_membership_id FK
+        text encrypted_content
+        varchar reason
+        timestamp created_at
+    }
+    INVOICES {
+        uuid id PK
+        uuid visit_id FK
+        varchar invoice_no UK
+        decimal subtotal
+        decimal total
+        enum status
+        timestamp issued_at
+    }
+    PAYMENTS {
+        uuid id PK
+        uuid invoice_id FK
+        varchar provider_reference UK
+        decimal amount
+        enum status
+        timestamp paid_at
+    }
+    NOTIFICATIONS {
+        uuid id PK
+        uuid user_id FK
+        varchar event_type
+        text safe_payload
+        timestamp read_at
+        timestamp created_at
+    }
+    AUDIT_EVENTS {
+        uuid id PK
+        uuid actor_user_id FK
+        uuid clinic_id FK
+        varchar action
+        varchar resource_type
+        uuid resource_id
+        json safe_metadata
+        timestamp occurred_at
+    }
+
+    USERS ||--o{ USER_SESSIONS : owns
+    USERS ||--o| PATIENT_PROFILES : has
+    PATIENT_PROFILES ||--o{ ADDRESSES : stores
+    PATIENT_PROFILES ||--o{ CONSENTS : grants
+    USERS ||--o{ CLINIC_MEMBERSHIPS : holds
+    CLINICS ||--o{ CLINIC_MEMBERSHIPS : contains
+    CLINICS ||--o{ CLINIC_SERVICES : offers
+    PATIENT_PROFILES ||--o{ VISITS : requests
+    CLINICS ||--o{ VISITS : operates
+    CLINIC_SERVICES ||--o{ VISITS : selected_for
+    ADDRESSES ||--o{ VISITS : used_by
+    VISITS ||--o{ VISIT_ASSIGNMENTS : has
+    CLINIC_MEMBERSHIPS ||--o{ VISIT_ASSIGNMENTS : receives
+    VISITS ||--o{ VISIT_STATUS_HISTORY : records
+    USERS ||--o{ VISIT_STATUS_HISTORY : changes
+    VISITS ||--o| MEDICAL_REPORTS : produces
+    CLINIC_MEMBERSHIPS ||--o{ MEDICAL_REPORTS : authors
+    MEDICAL_REPORTS ||--o{ REPORT_AMENDMENTS : appends
+    VISITS ||--o| INVOICES : bills
+    INVOICES ||--o{ PAYMENTS : receives
+    USERS ||--o{ NOTIFICATIONS : receives
+    USERS ||--o{ AUDIT_EVENTS : acts
+    CLINICS ||--o{ AUDIT_EVENTS : scopes
