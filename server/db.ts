@@ -1,6 +1,6 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, auditEvents, clinicMemberships, invoices, medicalReports, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, medicalReports, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 
@@ -158,13 +158,18 @@ export async function listManagedStaffMemberships(managerUserId: number) {
   });
 }
 
-export async function listAuditEventsForManager(managerUserId: number) {
+export async function listAuditEventsForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date } = {}) {
   const db = await getDb();
   if (!db) return [];
   const managerMemberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
   const clinicIds = managerMemberships.map(membership => membership.clinicId);
   if (clinicIds.length === 0) return [];
-  const events = await db.select().from(auditEvents).where(inArray(auditEvents.clinicId, clinicIds)).orderBy(desc(auditEvents.createdAt)).limit(50);
+  const events = await db.select().from(auditEvents).where(and(
+    inArray(auditEvents.clinicId, clinicIds),
+    filter.eventType ? eq(auditEvents.eventType, filter.eventType) : undefined,
+    filter.from ? gte(auditEvents.createdAt, filter.from) : undefined,
+    filter.to ? lte(auditEvents.createdAt, filter.to) : undefined,
+  )).orderBy(desc(auditEvents.createdAt)).limit(50);
   const actorIds = Array.from(new Set(events.map(event => event.actorUserId)));
   if (actorIds.length === 0) return [];
   const actorUsers = await db.select().from(users).where(inArray(users.id, actorIds));

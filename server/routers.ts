@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { visitStates } from "../drizzle/schema";
+import { auditEventTypes, visitStates } from "../drizzle/schema";
 import { assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, finalizeReport, getInvoiceForPatient, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedStaffMemberships, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, transitionVisit } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -70,7 +70,10 @@ export const appRouter = router({
     }),
   }),
   audit: router({
-    listOperations: adminProcedure.query(({ ctx }) => listAuditEventsForManager(ctx.user.id)),
+    listOperations: adminProcedure.input(z.object({ eventType: z.enum(auditEventTypes).optional(), from: z.date().optional(), to: z.date().optional() }).optional()).query(({ ctx, input }) => {
+      if (input?.from && input.to && input.from > input.to) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid audit date range" });
+      return listAuditEventsForManager(ctx.user.id, input);
+    }),
   }),
   outputs: router({
     finalizeReport: protectedProcedure.input(z.object({ visitId: z.number().int().positive(), summary: z.string().trim().min(10).max(4000) })).mutation(async ({ ctx, input }) => {

@@ -18,7 +18,20 @@ describe("audit operations", () => {
     mocks.listAuditEventsForManager.mockResolvedValue([{ id: 1, eventType: "VISIT_ASSIGNED", summary: "تم تكليف الزيارة V-1 بعضو فريق." }]);
     const caller = appRouter.createCaller(context("admin"));
     await expect(caller.audit.listOperations()).resolves.toHaveLength(1);
-    expect(mocks.listAuditEventsForManager).toHaveBeenCalledWith(71);
+    expect(mocks.listAuditEventsForManager).toHaveBeenCalledWith(71, undefined);
+  });
+
+  it("passes an event type and date window to the manager-scoped audit query", async () => {
+    mocks.listAuditEventsForManager.mockResolvedValue([]);
+    const caller = appRouter.createCaller(context("admin"));
+    const filter = { eventType: "VISIT_ASSIGNED" as const, from: new Date("2026-08-01T00:00:00.000Z"), to: new Date("2026-08-31T23:59:59.999Z") };
+    await expect(caller.audit.listOperations(filter)).resolves.toEqual([]);
+    expect(mocks.listAuditEventsForManager).toHaveBeenCalledWith(71, filter);
+  });
+
+  it("rejects an inverted audit date window before querying the data layer", async () => {
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.audit.listOperations({ from: new Date("2026-08-31T00:00:00.000Z"), to: new Date("2026-08-01T00:00:00.000Z") })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("rejects audit access for a non-administrator", async () => {
