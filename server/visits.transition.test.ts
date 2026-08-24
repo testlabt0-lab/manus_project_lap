@@ -8,9 +8,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./db", () => ({
   assignVisit: vi.fn(),
   createVisitForPatient: vi.fn(),
+  ensureDemoClinicianForOperationalClinic: vi.fn(),
   getVisitById: mocks.getVisitById,
   getVisitForPatient: vi.fn(),
+  listActiveMembershipsForUser: vi.fn(),
+  listAssignedVisitsForUser: vi.fn(),
   listOperationalVisits: vi.fn(),
+  listStaffForOperationalClinics: vi.fn(),
   listVisitsForPatient: vi.fn(),
   transitionVisit: mocks.transitionVisit,
 }));
@@ -45,5 +49,19 @@ describe("visits.transition", () => {
 
     await expect(caller.visits.transition({ visitId: 7, nextState: "COMPLETED" })).rejects.toMatchObject({ code: "CONFLICT" });
     expect(mocks.transitionVisit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a state transition when the current member is not assigned to the visit", async () => {
+    mocks.getVisitById.mockResolvedValue({ id: 8, state: "ASSIGNED" });
+    mocks.transitionVisit.mockResolvedValue(undefined);
+    const ctx: TrpcContext = {
+      user: { id: 8, openId: "unassigned-member", name: "عضو غير مكلّف", email: "member@example.test", loginMethod: "test", role: "user", createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() },
+      req: {} as TrpcContext["req"],
+      res: {} as TrpcContext["res"],
+    };
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(caller.visits.transition({ visitId: 8, nextState: "CONFIRMED" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(mocks.transitionVisit).toHaveBeenCalledWith({ visitId: 8, nextState: "CONFIRMED", changedByUserId: 8 });
   });
 });

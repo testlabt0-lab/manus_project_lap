@@ -58,6 +58,7 @@ export const visitStatusHistory = mysqlTable("visit_status_history", {
 export const visitAssignments = mysqlTable("visit_assignments", {
   id: int("id").autoincrement().primaryKey(),
   visitId: int("visitId").notNull(),
+  assigneeUserId: int("assigneeUserId"),
   assigneeLabel: varchar("assigneeLabel", { length: 120 }).notNull(),
   assignedByUserId: int("assignedByUserId").notNull(),
   status: mysqlEnum("status", ["PENDING", "ACCEPTED"]).default("PENDING").notNull(),
@@ -81,6 +82,7 @@ export const clinicMemberships = mysqlTable("clinic_memberships", {
 export const medicalReports = mysqlTable("medical_reports", {
   id: int("id").autoincrement().primaryKey(),
   visitId: int("visitId").notNull().unique(),
+  authoredByUserId: int("authoredByUserId"),
   status: mysqlEnum("status", ["FINALIZED"]).default("FINALIZED").notNull(),
   summary: text("summary").notNull(),
   finalizedAt: timestamp("finalizedAt").defaultNow().notNull(),
@@ -94,6 +96,17 @@ export const invoices = mysqlTable("invoices", {
   status: mysqlEnum("status", ["DUE", "PAID"]).default("DUE").notNull(),
   issuedAt: timestamp("issuedAt").defaultNow().notNull(),
 });
+
+export const payments = mysqlTable("payments", {
+  id: int("id").autoincrement().primaryKey(),
+  invoiceId: int("invoiceId").notNull(),
+  providerReference: varchar("providerReference", { length: 48 }).notNull().unique(),
+  amountHalalas: int("amountHalalas").notNull(),
+  status: mysqlEnum("status", ["RECORDED"]).default("RECORDED").notNull(),
+  recordedAt: timestamp("recordedAt").defaultNow().notNull(),
+}, table => [
+  index("payments_invoice_idx").on(table.invoiceId),
+]);
 
 export type Visit = typeof visits.$inferSelect;
 export type VisitState = (typeof visitStates)[number];

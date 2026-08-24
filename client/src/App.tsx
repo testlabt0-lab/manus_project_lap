@@ -10,6 +10,9 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/visit/:id" component={Home} />
+      <Route path="/team/report/:id" component={Home} />
+      <Route path="/report/:id" component={Home} />
+      <Route path="/invoice/:id" component={Home} />
       <Route path="/:rest*" component={Home} />
     </Switch>
   );

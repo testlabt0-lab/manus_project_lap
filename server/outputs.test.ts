@@ -8,12 +8,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./db", () => ({
   assignVisit: vi.fn(),
   createVisitForPatient: vi.fn(),
+  ensureDemoClinicianForOperationalClinic: vi.fn(),
   getInvoiceForPatient: mocks.getInvoiceForPatient,
   getReportForPatient: mocks.getReportForPatient,
   getVisitById: vi.fn(),
   getVisitForPatient: vi.fn(),
   listActiveMembershipsForUser: vi.fn(),
+  listAssignedVisitsForUser: vi.fn(),
   listOperationalVisits: vi.fn(),
+  listStaffForOperationalClinics: vi.fn(),
   listVisitsForPatient: vi.fn(),
   transitionVisit: vi.fn(),
 }));

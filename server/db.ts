@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, clinicMemberships, invoices, medicalReports, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, clinicMemberships, invoices, medicalReports, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { isEligibleAssigneeMembership } from "./staffPolicy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -113,6 +114,53 @@ export async function listOperationalVisits(userId: number) {
   return db.select().from(visits).where(inArray(visits.clinicId, clinicIds)).orderBy(desc(visits.scheduledStart));
 }
 
+export async function listAssignedVisitsForUser(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const memberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, userId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"])));
+  const clinicIds = memberships.filter(membership => isEligibleAssigneeMembership(membership, membership.clinicId)).map(membership => membership.clinicId);
+  if (clinicIds.length === 0) return [];
+  const assignments = await db.select().from(visitAssignments).where(eq(visitAssignments.assigneeUserId, userId)).orderBy(desc(visitAssignments.createdAt));
+  const visitIds = assignments.map(assignment => assignment.visitId);
+  if (visitIds.length === 0) return [];
+  return db.select().from(visits).where(and(inArray(visits.id, visitIds), inArray(visits.clinicId, clinicIds))).orderBy(desc(visits.scheduledStart));
+}
+
+export async function listStaffForOperationalClinics(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const managerMemberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, userId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
+  const clinicIds = managerMemberships.map(membership => membership.clinicId);
+  if (clinicIds.length === 0) return [];
+  const staffMemberships = (await db.select().from(clinicMemberships).where(and(inArray(clinicMemberships.clinicId, clinicIds), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"])))).filter(membership => isEligibleAssigneeMembership(membership, membership.clinicId));
+  const staffUserIds = Array.from(new Set(staffMemberships.map(membership => membership.userId)));
+  if (staffUserIds.length === 0) return [];
+  const staffUsers = await db.select().from(users).where(inArray(users.id, staffUserIds));
+  return staffMemberships.flatMap(membership => {
+    const staffUser = staffUsers.find(candidate => candidate.id === membership.userId);
+    return staffUser ? [{ userId: staffUser.id, displayName: staffUser.name ?? "عضو فريق", clinicId: membership.clinicId, clinicName: membership.clinicName, memberRole: membership.memberRole }] : [];
+  });
+}
+
+export async function ensureDemoClinicianForOperationalClinic(managerUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const managerMembership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1))[0];
+  if (!managerMembership) return undefined;
+  const demoOpenId = `demo-clinician-clinic-${managerMembership.clinicId}`;
+  let demoUser = await getUserByOpenId(demoOpenId);
+  if (!demoUser) {
+    await db.insert(users).values({ openId: demoOpenId, name: "ممارس تجريبي آمن", loginMethod: "demo", role: "user" });
+    demoUser = await getUserByOpenId(demoOpenId);
+  }
+  if (!demoUser) return undefined;
+  const existingMembership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, demoUser.id), eq(clinicMemberships.clinicId, managerMembership.clinicId))).limit(1))[0];
+  if (!existingMembership) {
+    await db.insert(clinicMemberships).values({ clinicId: managerMembership.clinicId, clinicName: managerMembership.clinicName, userId: demoUser.id, memberRole: "CLINICIAN", status: "ACTIVE" });
+  }
+  return { userId: demoUser.id, displayName: demoUser.name ?? "ممارس تجريبي آمن", clinicId: managerMembership.clinicId, clinicName: managerMembership.clinicName, memberRole: "CLINICIAN" as const };
+}
+
 export async function getVisitForPatient(visitId: number, patientId: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -142,15 +190,19 @@ export async function createVisitForPatient(input: {
   return result[0];
 }
 
-export async function assignVisit(input: { visitId: number; assignedByUserId: number; assigneeLabel: string }) {
+export async function assignVisit(input: { visitId: number; assignedByUserId: number; assigneeLabel: string; assigneeUserId?: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   const current = (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
   if (!current || current.state !== "REQUESTED") return undefined;
   const membership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.assignedByUserId), eq(clinicMemberships.clinicId, current.clinicId), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
   if (!membership) return undefined;
+  if (input.assigneeUserId) {
+    const assigneeMembership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.assigneeUserId), eq(clinicMemberships.clinicId, current.clinicId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"]))).limit(1))[0];
+    if (!isEligibleAssigneeMembership(assigneeMembership, current.clinicId)) return undefined;
+  }
   await db.transaction(async tx => {
-    await tx.insert(visitAssignments).values({ visitId: input.visitId, assignedByUserId: input.assignedByUserId, assigneeLabel: input.assigneeLabel });
+    await tx.insert(visitAssignments).values({ visitId: input.visitId, assignedByUserId: input.assignedByUserId, assigneeLabel: input.assigneeLabel, assigneeUserId: input.assigneeUserId });
     await tx.update(visits).set({ state: "ASSIGNED" }).where(eq(visits.id, input.visitId));
     await tx.insert(visitStatusHistory).values({ visitId: input.visitId, fromState: current.state, toState: "ASSIGNED", changedByUserId: input.assignedByUserId });
   });
@@ -164,11 +216,14 @@ export async function transitionVisit(input: { visitId: number; changedByUserId:
   if (!current) return undefined;
   const membership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.changedByUserId), eq(clinicMemberships.clinicId, current.clinicId), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
   if (!membership) return undefined;
+  if (membership.memberRole !== "MANAGER") {
+    const assignment = (await db.select().from(visitAssignments).where(and(eq(visitAssignments.visitId, input.visitId), eq(visitAssignments.assigneeUserId, input.changedByUserId))).limit(1))[0];
+    if (!assignment) return undefined;
+  }
   await db.transaction(async tx => {
     await tx.update(visits).set({ state: input.nextState }).where(eq(visits.id, input.visitId));
     await tx.insert(visitStatusHistory).values({ visitId: input.visitId, fromState: current.state, toState: input.nextState, changedByUserId: input.changedByUserId });
     if (input.nextState === "COMPLETED") {
-      await tx.insert(medicalReports).values({ visitId: input.visitId, summary: "ملخص عرض تجريبي للزيارة المكتملة. لا يتضمن هذا السجل أي بيانات سريرية حقيقية." });
       await tx.insert(invoices).values({ visitId: input.visitId, invoiceNo: `INV-${current.reference.replace("V-", "")}`, totalHalalas: 27000, status: "DUE" });
     }
   });
@@ -189,6 +244,36 @@ export async function getInvoiceForPatient(visitId: number, patientId: number) {
   const db = await getDb();
   if (!db) return undefined;
   return (await db.select().from(invoices).where(eq(invoices.visitId, visitId)).limit(1))[0];
+}
+
+export async function finalizeReport(input: { visitId: number; authoredByUserId: number; summary: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const visit = await getVisitById(input.visitId);
+  if (!visit || visit.state !== "COMPLETED") return undefined;
+  const membership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.authoredByUserId), eq(clinicMemberships.clinicId, visit.clinicId), eq(clinicMemberships.memberRole, "CLINICIAN"), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
+  if (!membership) return undefined;
+  const assignment = (await db.select().from(visitAssignments).where(and(eq(visitAssignments.visitId, input.visitId), eq(visitAssignments.assigneeUserId, input.authoredByUserId))).limit(1))[0];
+  if (!assignment) return undefined;
+  const existing = (await db.select().from(medicalReports).where(eq(medicalReports.visitId, input.visitId)).limit(1))[0];
+  if (existing) return undefined;
+  await db.insert(medicalReports).values({ visitId: input.visitId, authoredByUserId: input.authoredByUserId, summary: input.summary });
+  return (await db.select().from(medicalReports).where(eq(medicalReports.visitId, input.visitId)).limit(1))[0];
+}
+
+export async function recordDemoPayment(visitId: number, patientId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const visit = await getVisitForPatient(visitId, patientId);
+  if (!visit || visit.state !== "COMPLETED") return undefined;
+  const invoice = (await db.select().from(invoices).where(eq(invoices.visitId, visitId)).limit(1))[0];
+  if (!invoice || invoice.status !== "DUE") return undefined;
+  const providerReference = `DEMO-${invoice.invoiceNo}-${Date.now().toString().slice(-6)}`;
+  await db.transaction(async tx => {
+    await tx.insert(payments).values({ invoiceId: invoice.id, providerReference, amountHalalas: invoice.totalHalalas });
+    await tx.update(invoices).set({ status: "PAID" }).where(eq(invoices.id, invoice.id));
+  });
+  return (await db.select().from(invoices).where(eq(invoices.id, invoice.id)).limit(1))[0];
 }
 
 export async function listActiveMembershipsForUser(userId: number) {

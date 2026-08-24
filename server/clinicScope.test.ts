@@ -2,18 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   assignVisit: vi.fn(),
+  ensureDemoClinicianForOperationalClinic: vi.fn(),
   listOperationalVisits: vi.fn(),
 }));
 
 vi.mock("./db", () => ({
   assignVisit: mocks.assignVisit,
   createVisitForPatient: vi.fn(),
+  ensureDemoClinicianForOperationalClinic: mocks.ensureDemoClinicianForOperationalClinic,
   getInvoiceForPatient: vi.fn(),
   getReportForPatient: vi.fn(),
   getVisitById: vi.fn(),
   getVisitForPatient: vi.fn(),
   listActiveMembershipsForUser: vi.fn(),
+  listAssignedVisitsForUser: vi.fn(),
   listOperationalVisits: mocks.listOperationalVisits,
+  listStaffForOperationalClinics: vi.fn(),
   listVisitsForPatient: vi.fn(),
   transitionVisit: vi.fn(),
 }));
@@ -37,5 +41,26 @@ describe("clinic scope", () => {
     mocks.assignVisit.mockResolvedValue(undefined);
     const caller = appRouter.createCaller(managerContext());
     await expect(caller.visits.assign({ visitId: 77, assigneeLabel: "فريق خارج النطاق" })).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("rejects an inactive clinician supplied to the assignment router", async () => {
+    mocks.assignVisit.mockResolvedValue(undefined);
+    const caller = appRouter.createCaller(managerContext());
+    await expect(caller.visits.assign({ visitId: 78, assigneeLabel: "ممارس غير نشط", assigneeUserId: 88 })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(mocks.assignVisit).toHaveBeenCalledWith({ visitId: 78, assigneeLabel: "ممارس غير نشط", assigneeUserId: 88, assignedByUserId: 44 });
+  });
+
+  it("rejects staff from another clinic supplied to the assignment router", async () => {
+    mocks.assignVisit.mockResolvedValue(undefined);
+    const caller = appRouter.createCaller(managerContext());
+    await expect(caller.visits.assign({ visitId: 79, assigneeLabel: "ممارس خارج العيادة", assigneeUserId: 89 })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(mocks.assignVisit).toHaveBeenCalledWith({ visitId: 79, assigneeLabel: "ممارس خارج العيادة", assigneeUserId: 89, assignedByUserId: 44 });
+  });
+
+  it("creates a safe demo clinician only through the authenticated manager identity", async () => {
+    mocks.ensureDemoClinicianForOperationalClinic.mockResolvedValue({ userId: 81, displayName: "ممارس تجريبي آمن", clinicId: 1, clinicName: "عيادة الحياة", memberRole: "CLINICIAN" });
+    const caller = appRouter.createCaller(managerContext());
+    await expect(caller.memberships.ensureDemoClinician()).resolves.toMatchObject({ userId: 81, memberRole: "CLINICIAN" });
+    expect(mocks.ensureDemoClinicianForOperationalClinic).toHaveBeenCalledWith(44);
   });
 });
