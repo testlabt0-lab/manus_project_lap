@@ -79,6 +79,22 @@ export const clinicMemberships = mysqlTable("clinic_memberships", {
   index("clinic_memberships_user_status_idx").on(table.userId, table.status),
 ]);
 
+export const auditEventTypes = ["VISIT_ASSIGNED", "VISIT_STATE_CHANGED", "STAFF_MEMBERSHIP_STATUS_CHANGED"] as const;
+
+export const auditEvents = mysqlTable("audit_events", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull(),
+  actorUserId: int("actorUserId").notNull(),
+  eventType: mysqlEnum("eventType", auditEventTypes).notNull(),
+  resourceType: varchar("resourceType", { length: 32 }).notNull(),
+  resourceId: int("resourceId").notNull(),
+  summary: varchar("summary", { length: 255 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("audit_events_clinic_created_idx").on(table.clinicId, table.createdAt),
+  index("audit_events_resource_idx").on(table.resourceType, table.resourceId),
+]);
+
 export const medicalReports = mysqlTable("medical_reports", {
   id: int("id").autoincrement().primaryKey(),
   visitId: int("visitId").notNull().unique(),

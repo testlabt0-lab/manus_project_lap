@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, clinicMemberships, invoices, medicalReports, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, auditEvents, clinicMemberships, invoices, medicalReports, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 
@@ -158,6 +158,19 @@ export async function listManagedStaffMemberships(managerUserId: number) {
   });
 }
 
+export async function listAuditEventsForManager(managerUserId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const managerMemberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
+  const clinicIds = managerMemberships.map(membership => membership.clinicId);
+  if (clinicIds.length === 0) return [];
+  const events = await db.select().from(auditEvents).where(inArray(auditEvents.clinicId, clinicIds)).orderBy(desc(auditEvents.createdAt)).limit(50);
+  const actorIds = Array.from(new Set(events.map(event => event.actorUserId)));
+  if (actorIds.length === 0) return [];
+  const actorUsers = await db.select().from(users).where(inArray(users.id, actorIds));
+  return events.map(event => ({ ...event, actorName: actorUsers.find(user => user.id === event.actorUserId)?.name ?? "مستخدم تشغيلي" }));
+}
+
 export async function setManagedStaffMembershipStatus(input: { managerUserId: number; membershipId: number; status: "ACTIVE" | "INACTIVE" }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
@@ -166,6 +179,7 @@ export async function setManagedStaffMembershipStatus(input: { managerUserId: nu
   const managerMembership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.managerUserId), eq(clinicMemberships.clinicId, staffMembership.clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
   if (!managerMembership) return undefined;
   await db.update(clinicMemberships).set({ status: input.status }).where(eq(clinicMemberships.id, input.membershipId));
+  await db.insert(auditEvents).values({ clinicId: staffMembership.clinicId, actorUserId: input.managerUserId, eventType: "STAFF_MEMBERSHIP_STATUS_CHANGED", resourceType: "MEMBERSHIP", resourceId: input.membershipId, summary: input.status === "ACTIVE" ? "تم تفعيل عضوية فريق." : "تم تعليق عضوية فريق." });
   return (await db.select().from(clinicMemberships).where(eq(clinicMemberships.id, input.membershipId)).limit(1))[0];
 }
 
@@ -232,6 +246,7 @@ export async function assignVisit(input: { visitId: number; assignedByUserId: nu
     await tx.insert(visitAssignments).values({ visitId: input.visitId, assignedByUserId: input.assignedByUserId, assigneeLabel: input.assigneeLabel, assigneeUserId: input.assigneeUserId });
     await tx.update(visits).set({ state: "ASSIGNED" }).where(eq(visits.id, input.visitId));
     await tx.insert(visitStatusHistory).values({ visitId: input.visitId, fromState: current.state, toState: "ASSIGNED", changedByUserId: input.assignedByUserId });
+    await tx.insert(auditEvents).values({ clinicId: current.clinicId, actorUserId: input.assignedByUserId, eventType: "VISIT_ASSIGNED", resourceType: "VISIT", resourceId: input.visitId, summary: `تم تكليف الزيارة ${current.reference} بعضو فريق.` });
   });
   return (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
 }
@@ -250,6 +265,7 @@ export async function transitionVisit(input: { visitId: number; changedByUserId:
   await db.transaction(async tx => {
     await tx.update(visits).set({ state: input.nextState }).where(eq(visits.id, input.visitId));
     await tx.insert(visitStatusHistory).values({ visitId: input.visitId, fromState: current.state, toState: input.nextState, changedByUserId: input.changedByUserId });
+    await tx.insert(auditEvents).values({ clinicId: current.clinicId, actorUserId: input.changedByUserId, eventType: "VISIT_STATE_CHANGED", resourceType: "VISIT", resourceId: input.visitId, summary: `تم تحديث حالة الزيارة ${current.reference} إلى ${input.nextState}.` });
     if (input.nextState === "COMPLETED") {
       await tx.insert(invoices).values({ visitId: input.visitId, invoiceNo: `INV-${current.reference.replace("V-", "")}`, totalHalalas: 27000, status: "DUE" });
     }

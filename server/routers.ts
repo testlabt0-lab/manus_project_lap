@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { visitStates } from "../drizzle/schema";
-import { assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, finalizeReport, getInvoiceForPatient, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listManagedStaffMemberships, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, transitionVisit } from "./db";
+import { assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, finalizeReport, getInvoiceForPatient, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedStaffMemberships, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, transitionVisit } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -68,6 +68,9 @@ export const appRouter = router({
       if (!staffMember) throw new TRPCError({ code: "FORBIDDEN", message: "No active manager clinic membership" });
       return staffMember;
     }),
+  }),
+  audit: router({
+    listOperations: adminProcedure.query(({ ctx }) => listAuditEventsForManager(ctx.user.id)),
   }),
   outputs: router({
     finalizeReport: protectedProcedure.input(z.object({ visitId: z.number().int().positive(), summary: z.string().trim().min(10).max(4000) })).mutation(async ({ ctx, input }) => {
