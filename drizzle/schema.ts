@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { index, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -25,4 +25,45 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+export const visitStates = ["REQUESTED", "ASSIGNED", "CONFIRMED", "EN_ROUTE", "ARRIVED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
+
+export const visits = mysqlTable("visits", {
+  id: int("id").autoincrement().primaryKey(),
+  reference: varchar("reference", { length: 24 }).notNull().unique(),
+  patientId: int("patientId").notNull(),
+  clinicName: varchar("clinicName", { length: 160 }).notNull(),
+  serviceName: varchar("serviceName", { length: 160 }).notNull(),
+  districtLabel: varchar("districtLabel", { length: 180 }).notNull(),
+  scheduledStart: timestamp("scheduledStart").notNull(),
+  state: mysqlEnum("state", visitStates).default("REQUESTED").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  index("visits_patient_scheduled_idx").on(table.patientId, table.scheduledStart),
+  index("visits_state_scheduled_idx").on(table.state, table.scheduledStart),
+]);
+
+export const visitStatusHistory = mysqlTable("visit_status_history", {
+  id: int("id").autoincrement().primaryKey(),
+  visitId: int("visitId").notNull(),
+  fromState: mysqlEnum("fromState", visitStates).notNull(),
+  toState: mysqlEnum("toState", visitStates).notNull(),
+  changedByUserId: int("changedByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("visit_history_visit_created_idx").on(table.visitId, table.createdAt),
+]);
+
+export const visitAssignments = mysqlTable("visit_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  visitId: int("visitId").notNull(),
+  assigneeLabel: varchar("assigneeLabel", { length: 120 }).notNull(),
+  assignedByUserId: int("assignedByUserId").notNull(),
+  status: mysqlEnum("status", ["PENDING", "ACCEPTED"]).default("PENDING").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("visit_assignments_visit_idx").on(table.visitId),
+]);
+
+export type Visit = typeof visits.$inferSelect;
+export type VisitState = (typeof visitStates)[number];

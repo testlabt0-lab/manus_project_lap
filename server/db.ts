@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, type VisitState, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,68 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function listVisitsForPatient(patientId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(visits).where(eq(visits.patientId, patientId)).orderBy(desc(visits.scheduledStart));
+}
+
+export async function listOperationalVisits() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(visits).orderBy(desc(visits.scheduledStart));
+}
+
+export async function getVisitForPatient(visitId: number, patientId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(visits).where(eq(visits.id, visitId)).limit(1);
+  const visit = result[0];
+  return visit?.patientId === patientId ? visit : undefined;
+}
+
+export async function getVisitById(visitId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  return (await db.select().from(visits).where(eq(visits.id, visitId)).limit(1))[0];
+}
+
+export async function createVisitForPatient(input: {
+  patientId: number;
+  clinicName: string;
+  serviceName: string;
+  districtLabel: string;
+  scheduledStart: Date;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const reference = `V-${Date.now().toString().slice(-8)}`;
+  await db.insert(visits).values({ ...input, reference, state: "REQUESTED" });
+  const result = await db.select().from(visits).where(eq(visits.reference, reference)).limit(1);
+  return result[0];
+}
+
+export async function assignVisit(input: { visitId: number; assignedByUserId: number; assigneeLabel: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const current = (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
+  if (!current || current.state !== "REQUESTED") return undefined;
+  await db.transaction(async tx => {
+    await tx.insert(visitAssignments).values({ visitId: input.visitId, assignedByUserId: input.assignedByUserId, assigneeLabel: input.assigneeLabel });
+    await tx.update(visits).set({ state: "ASSIGNED" }).where(eq(visits.id, input.visitId));
+    await tx.insert(visitStatusHistory).values({ visitId: input.visitId, fromState: current.state, toState: "ASSIGNED", changedByUserId: input.assignedByUserId });
+  });
+  return (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
+}
+
+export async function transitionVisit(input: { visitId: number; changedByUserId: number; nextState: VisitState }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const current = (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
+  if (!current) return undefined;
+  await db.transaction(async tx => {
+    await tx.update(visits).set({ state: input.nextState }).where(eq(visits.id, input.visitId));
+    await tx.insert(visitStatusHistory).values({ visitId: input.visitId, fromState: current.state, toState: input.nextState, changedByUserId: input.changedByUserId });
+  });
+  return (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
+}
