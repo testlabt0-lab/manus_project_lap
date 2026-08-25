@@ -83,6 +83,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
       toast.success("تم حفظ عتبة التأكيد لهذا الحساب.");
       utils.notifications.getResponsePreference.invalidate();
       utils.notifications.responseThresholdAlert.invalidate();
+      utils.audit.listOperations.invalidate();
     },
     onError: () => toast.error("تعذر حفظ عتبة التأكيد."),
   });
@@ -150,7 +151,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
         {!thresholdAlert.data.hasData && <p className="text-sm leading-7 text-[#6b867e]">لا توجد إشعارات ضمن الفترة المختارة، لذلك لم يُسجّل تجاوز أو نجاح للعتبة.</p>}
         {thresholdAlert.data.hasData && thresholdAlert.data.isBelowThreshold && <p className="text-sm font-semibold leading-7 text-[#9a5e16]">نسبة التأكيد الحالية {thresholdAlert.data.acknowledgementRate}% أقل من العتبة المختارة {thresholdAlert.data.minimumAcknowledgementRate}% بفارق {Math.abs(thresholdAlert.data.rateGap ?? 0)} نقطة مئوية.</p>}
         {thresholdAlert.data.hasData && !thresholdAlert.data.isBelowThreshold && <p className="text-sm font-semibold leading-7 text-[#0b776b]">نسبة التأكيد الحالية {thresholdAlert.data.acknowledgementRate}% ضمن العتبة المختارة {thresholdAlert.data.minimumAcknowledgementRate}%.</p>}
-        <p className="mt-2 text-xs leading-6 text-[#6b867e]">تُحفظ العتبة لحساب المدير، ويقيّم التنبيه فقط الإشعارات المتاحة ضمن عضويات المدير النشطة.</p>
+        <p className="mt-2 text-xs leading-6 text-[#6b867e]">تُحفظ العتبة لحساب المدير، ويقيّم التنبيه فقط الإشعارات المتاحة ضمن عضويات المدير النشطة. يسجّل الخادم أي تغيير فعلي للعتبة في سجل التدقيق التشغيلي للعيادة.</p>
       </div>}
     </section>
 

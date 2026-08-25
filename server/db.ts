@@ -183,7 +183,11 @@ export async function setManagerNotificationResponsePreference(managerUserId: nu
   if (!db) return undefined;
   const [membership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
   if (!membership) return undefined;
+  const [existing] = await db.select({ minimumAcknowledgementRate: managerNotificationPreferences.minimumAcknowledgementRate }).from(managerNotificationPreferences).where(and(eq(managerNotificationPreferences.managerUserId, managerUserId), eq(managerNotificationPreferences.clinicId, clinicId))).limit(1);
+  const previousRate = existing?.minimumAcknowledgementRate ?? 70;
+  if (previousRate === minimumAcknowledgementRate) return { minimumAcknowledgementRate };
   await db.insert(managerNotificationPreferences).values({ managerUserId, clinicId, minimumAcknowledgementRate }).onDuplicateKeyUpdate({ set: { minimumAcknowledgementRate, updatedAt: new Date() } });
+  await db.insert(auditEvents).values({ clinicId, actorUserId: managerUserId, eventType: "NOTIFICATION_THRESHOLD_CHANGED", resourceType: "NOTIFICATION_THRESHOLD", resourceId: clinicId, summary: `تم تغيير عتبة تأكيد الإشعارات من ${previousRate}% إلى ${minimumAcknowledgementRate}%.` });
   return { minimumAcknowledgementRate };
 }
 
