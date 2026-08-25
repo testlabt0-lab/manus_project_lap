@@ -39,7 +39,7 @@ import { DEMO_VISIT } from "../../../shared/mockData";
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/MediCare_Pro_Audit_Threshold_Filter_Source_ae96f49a.zip";
+const PACKAGE_URL = "/manus-storage/MediCare_Pro_Audit_Clinic_Filter_Source_e2818455.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";
@@ -87,6 +87,15 @@ function TopBar({ path, navigate, role, setRole }: { path: string; navigate: (to
       <div className="hidden h-9 w-9 place-items-center rounded-full bg-[#dff1eb] text-sm font-bold text-[#0b776b] sm:grid">س</div>
     </div>
   </div></header>;
+}
+
+function AuditClinicScopeControl({ path, location, navigate }: { path: string; location: string; navigate: (to: string) => void }) {
+  const { isAuthenticated, user } = useAuth();
+  const canManage = path === "/operations" && isAuthenticated && user?.role === "admin";
+  const clinics = trpc.notifications.managedClinics.useQuery(undefined, { enabled: canManage });
+  const selectedClinicId = Number(new URLSearchParams(location.split("?")[1] ?? "").get("auditClinicId")) || undefined;
+  if (!canManage) return null;
+  return <div className="shell pt-4"><section className="rounded-2xl border border-[#dbe9e4] bg-[#f7fbf9] px-4 py-3 sm:flex sm:items-center sm:justify-between"><div><p className="text-sm font-bold text-[#31584f]">نطاق سجل التدقيق</p><p className="mt-1 text-xs text-[#6b867e]">يُطبَّق اختيار العيادة على العرض وتصدير CSV بعد التحقق من عضويتك الإدارية النشطة.</p></div><label className="field-label mt-3 text-xs sm:mt-0">العيادة<select className="field-input mt-1 min-w-56" value={selectedClinicId ?? "ALL"} disabled={clinics.isLoading} onChange={event => navigate(event.target.value === "ALL" ? "/operations" : `/operations?auditClinicId=${event.target.value}`)}><option value="ALL">كل العيادات المتاحة</option>{clinics.data?.map(clinic => <option key={clinic.clinicId} value={clinic.clinicId}>{clinic.clinicName}</option>)}</select></label></section></div>;
 }
 
 function MobileNav({ path, navigate }: { path: string; navigate: (path: string) => void }) {
@@ -189,7 +198,7 @@ function InvoicePage({ navigate, canRead }: { navigate: (to: string) => void; ca
 
 function OperationsSidebar({ active, setActive }: { active: Role; setActive: (role: Role) => void }) { const links = [{ role:"manager" as Role, label:"لوحة مدير العيادة", icon: LayoutDashboard },{ role:"staff" as Role, label:"مهامي كفريق طبي", icon: Stethoscope },{ role:"patient" as Role, label:"عرض المريض", icon: UserRound }]; return <aside className="panel ops-sidebar">{links.map(link => { const Icon = link.icon; return <button key={link.role} className={`ops-nav ${active === link.role ? "active" : ""}`} onClick={() => setActive(link.role)}><Icon size={17}/>{link.label}</button>; })}<div className="mt-3 border-t border-[#e5efeb] pt-3"><p className="px-2 text-xs font-bold text-[#839890]">سياق التشغيل</p><div className="mt-2 rounded-xl bg-[#eff9f5] p-3 text-xs text-[#3a7063]"><ShieldCheck className="ml-1 inline" size={15}/> عيادة الحياة · وصول حسب الدور</div></div></aside>; }
 
-function LiveOperationsManager({ navigate }: { navigate: (to: string) => void }) {
+function LiveOperationsManager({ navigate, auditClinicId }: { navigate: (to: string) => void; auditClinicId?: number }) {
   const { isAuthenticated, user } = useAuth();
   const canManage = isAuthenticated && user?.role === "admin";
   const utils = trpc.useUtils();
@@ -208,8 +217,8 @@ function LiveOperationsManager({ navigate }: { navigate: (to: string) => void })
     if (auditPeriod === "DAY") from.setDate(from.getDate() - 1);
     if (auditPeriod === "WEEK") from.setDate(from.getDate() - 7);
     if (auditPeriod === "MONTH") from.setDate(from.getDate() - 30);
-    return { eventType: auditEventType === "ALL" ? undefined : auditEventType, from: auditPeriod === "ALL" ? undefined : from, query: auditSearchTerm || undefined };
-  }, [auditEventType, auditPeriod, auditSearchTerm]);
+    return { eventType: auditEventType === "ALL" ? undefined : auditEventType, from: auditPeriod === "ALL" ? undefined : from, query: auditSearchTerm || undefined, clinicId: auditClinicId };
+  }, [auditEventType, auditPeriod, auditSearchTerm, auditClinicId]);
   const audit = trpc.audit.listOperations.useQuery(auditInput, { enabled: canManage });
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const selectedStaff = staff.data?.find(member => String(member.userId) === selectedStaffId);
@@ -279,10 +288,10 @@ function TeamWorkspace({ navigate }: { navigate: (to: string) => void }) {
   return <main className="shell page-wrap"><div className="page-header"><div><h1>مساحة الفريق الطبي</h1><p>تعرض هذه المساحة مهام العضو المعيّنة له فقط ضمن نطاق عيادته.</p></div><button className="outline-btn" onClick={() => navigate("/flow")}>تدفق البيانات</button></div><section className="panel max-w-4xl"><div className="flex items-center justify-between"><div><p className="text-sm text-[#718980]">العيادة</p><h2 className="mt-1 text-xl font-bold text-[#31584f]">{membership.clinicName}</h2></div><span className="badge badge-success">{membership.memberRole === "MANAGER" ? "مدير" : membership.memberRole === "NURSE" ? "تمريض" : "ممارس"}</span></div><div className="mt-6 grid gap-3">{assignedVisits.isLoading ? <p className="rounded-2xl bg-[#f5faf8] p-5 text-sm text-[#6b867e]">جارٍ تحميل المهام المعيّنة…</p> : assignedVisits.data?.map(visit => { const next = nextVisitState(visit.state as VisitState); return <article key={visit.id} className="rounded-2xl border border-[#dbe9e4] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs text-[#718980]">{visit.reference} · {visit.serviceName}</p><h3 className="mt-1 font-bold text-[#31584f]">زيارة مكلّفة لك</h3></div><Badge state={visit.state as VisitState}/></div><div className="mt-4 flex flex-wrap gap-3"><button className="outline-btn" onClick={() => navigate(`/visit/${visit.id}`)}>تفاصيل المهمة</button>{next && <button className="outline-btn" disabled={transition.isPending} onClick={() => transition.mutate({ visitId: visit.id, nextState: next })}>تحديث إلى {visitStateMeta[next].label}</button>}{visit.state === "COMPLETED" && membership.memberRole === "CLINICIAN" && <button className="primary-btn" onClick={() => navigate(`/team/report/${visit.id}`)}>إعداد التقرير النهائي</button>}</div></article>; })}{!assignedVisits.isLoading && assignedVisits.data?.length === 0 && <div className="rounded-2xl bg-[#f5faf8] p-5"><p className="font-bold text-[#31584f]">لا توجد مهام مكلّفة حالياً</p><p className="mt-2 text-sm leading-7 text-[#6b867e]">لا تظهر هنا إلا الزيارات التي يطابق فيها معرّف التكليف عضوية الحساب النشطة. لا تُعرض قائمة تشغيل العيادة العامة.</p></div>}</div></section></main>;
 }
 
-function OperationsPage({ role, setRole, visitState, setVisitState, navigate }: { role: Role; setRole: (role: Role) => void; visitState: VisitState; setVisitState: (state: VisitState) => void; navigate: (to: string) => void }) {
+function OperationsPage({ role, setRole, visitState, setVisitState, navigate, auditClinicId }: { role: Role; setRole: (role: Role) => void; visitState: VisitState; setVisitState: (state: VisitState) => void; navigate: (to: string) => void; auditClinicId?: number }) {
   const isStaff = role === "staff"; const next = nextVisitState(visitState);
   if (isStaff) return <TeamWorkspace navigate={navigate} />;
-  if (!isStaff) return <LiveOperationsManager navigate={navigate} />;
+  if (!isStaff) return <LiveOperationsManager navigate={navigate} auditClinicId={auditClinicId} />;
   return <main className="shell page-wrap"><div className="page-header"><div><h1>{isStaff ? "مهامي الميدانية" : "لوحة تشغيل العيادة"}</h1><p>{isStaff ? "تحديثات مضبوطة حسب التعيين وحالة الزيارة." : "إدارة الطلبات والتعيينات ضمن نطاق العيادة النشطة."}</p></div><button className="outline-btn" onClick={() => navigate("/flow")}><Network size={16}/> تدفق البيانات</button></div><div className="ops-layout"><OperationsSidebar active={role} setActive={nextRole => { setRole(nextRole); navigate(nextRole === "patient" ? "/" : nextRole === "staff" ? "/team" : "/operations"); }}/><section className="ops-main">{isStaff ? <><div className="metric-grid"><div className="metric-card"><span className="metric-label">مهامي اليوم</span><span className="metric-value">3</span></div><div className="metric-card"><span className="metric-label">في الطريق</span><span className="metric-value">1</span></div><div className="metric-card"><span className="metric-label">مكتملة</span><span className="metric-value">2</span></div><div className="metric-card"><span className="metric-label">تحتاج قبولاً</span><span className="metric-value">0</span></div></div><div className="panel mt-5"><div className="section-head"><div><h2 className="section-title">التكليف الحالي</h2><p className="section-copy">V-1024 · طب عام في المنزل</p></div><Badge state={visitState}/></div><div className="grid gap-4 md:grid-cols-2"><div className="rounded-2xl bg-[#f5faf8] p-4"><p className="text-xs text-[#789188]">الإجراء المتاح الآن</p><p className="mt-2 font-bold text-[#2a5148]">{next ? `تحديث الحالة إلى: ${visitStateMeta[next].label}` : "لا توجد انتقالات أخرى"}</p><button className="primary-btn mt-4" disabled={!next} onClick={() => { if (next) { setVisitState(next); toast.success(`تم تحديث حالة الزيارة إلى ${visitStateMeta[next].label}`); } }}>{next ? "تحديث الحالة" : "اكتملت المهمة"}</button></div><div className="rounded-2xl border border-[#dbe9e4] p-4"><p className="text-xs text-[#789188]">صلاحيات الواجهة</p><ul className="mt-3 grid gap-2 text-sm text-[#4a6c63]"><li><Check className="ml-1 inline text-[#0b776b]" size={15}/> عرض الزيارات المكلف بها فقط</li><li><Check className="ml-1 inline text-[#0b776b]" size={15}/> تحديث الحالة وفق المسار</li><li><span className="ml-1 inline-block h-2 w-2 rounded-full bg-[#c8972b]"/> لا يصدر الفاتورة أو يقرأ فواتير غيره</li></ul></div></div></div></> : <><div className="metric-grid"><div className="metric-card"><span className="metric-label">طلبات جديدة</span><span className="metric-value">8</span></div><div className="metric-card"><span className="metric-label">زيارات اليوم</span><span className="metric-value">14</span></div><div className="metric-card"><span className="metric-label">في الطريق</span><span className="metric-value">3</span></div><div className="metric-card"><span className="metric-label">مكتملة</span><span className="metric-value">11</span></div></div><div className="panel mt-5"><div className="section-head"><div><h2 className="section-title">طلبات تحتاج إلى تعيين</h2><p className="section-copy">بيانات تجريبية آمنة ضمن عيادة الحياة.</p></div><button className="outline-btn" onClick={() => toast.info("التصفية حسب الخدمة ستتوفر عند ربط البيانات الحقيقية")}> <Search className="ml-1 inline" size={15}/> تصفية</button></div><div className="table-wrap"><table className="data-table"><thead><tr><th>رقم الزيارة</th><th>الخدمة</th><th>الموعد</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody><tr><td className="font-bold">V-1028</td><td>تمريض منزلي</td><td>26 مايو · 11:30 ص</td><td><Badge state="REQUESTED"/></td><td><button className="outline-btn" onClick={() => toast.success("تم تعيين د. رامي للزيارة V-1028")}>تعيين فريق</button></td></tr><tr><td className="font-bold">V-1029</td><td>متابعة مزمنة</td><td>26 مايو · 01:00 م</td><td><Badge state="REQUESTED"/></td><td><button className="outline-btn" onClick={() => toast.success("تم تعيين الفريق التجريبي")}>تعيين فريق</button></td></tr></tbody></table></div></div></>}</section></div></main>;
 }
 
@@ -292,7 +301,8 @@ function DocsPage() { const docs = [{ id:"dfd", type:"DFD", title:"مخطط تد
 
 export default function Home() {
   const [location, setLocation] = useLocation(); const [role,setRole] = useState<Role>("patient"); const [visitState,setVisitState] = useState<VisitState>("EN_ROUTE");
-  const path = location === "/" ? "/" : location.replace(/\/$/, ""); const navigate = (to:string) => setLocation(to);
+  const path = location === "/" ? "/" : location.replace(/\?.*$/, "").replace(/\/$/, ""); const navigate = (to:string) => setLocation(to);
+  const auditClinicId = Number(new URLSearchParams(location.split("?")[1] ?? "").get("auditClinicId")) || undefined;
   const liveVisitId = /^\/visit\/(\d+)$/.exec(path)?.[1];
   const reportVisitId = /^\/report\/(\d+)$/.exec(path)?.[1];
   const reportEditorVisitId = /^\/team\/report\/(\d+)$/.exec(path)?.[1];
@@ -308,10 +318,10 @@ export default function Home() {
     if (invoiceVisitId) return <ServerOutputPage navigate={navigate} visitId={Number(invoiceVisitId)} type="invoice"/>;
     if (path === "/report") return <ReportPage navigate={navigate} canRead={canReadPatientVisitOutput(visitState)}/>;
     if (path === "/invoice") return <InvoicePage navigate={navigate} canRead={canReadPatientVisitOutput(visitState)}/>;
-    if (path === "/operations" || path === "/team") return <OperationsPage role={path === "/team" ? "staff" : role === "patient" ? "manager" : role} setRole={setRole} navigate={navigate} visitState={visitState} setVisitState={setVisitState}/>;
+    if (path === "/operations" || path === "/team") return <OperationsPage role={path === "/team" ? "staff" : role === "patient" ? "manager" : role} setRole={setRole} navigate={navigate} visitState={visitState} setVisitState={setVisitState} auditClinicId={auditClinicId}/>;
     if (path === "/flow") return <FlowPage navigate={navigate}/>;
     if (path === "/docs") return <DocsPage/>;
     return <PatientDashboard navigate={navigate} visitState={visitState}/>;
-  }, [path, role, visitState]);
-  return <div className="app-canvas" dir="rtl"><TopBar path={path} navigate={navigate} role={role} setRole={setRole}/>{page}<MobileNav path={path} navigate={navigate}/></div>;
+  }, [path, role, visitState, auditClinicId]);
+  return <div className="app-canvas" dir="rtl"><TopBar path={path} navigate={navigate} role={role} setRole={setRole}/><AuditClinicScopeControl path={path} location={location} navigate={navigate}/>{page}<MobileNav path={path} navigate={navigate}/></div>;
 }

@@ -305,11 +305,11 @@ export async function listManagedStaffMemberships(managerUserId: number) {
   });
 }
 
-export async function listAuditEventsForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date; query?: string } = {}) {
+export async function listAuditEventsForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date; query?: string; clinicId?: number } = {}) {
   const db = await getDb();
   if (!db) return [];
   const managerMemberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
-  const clinicIds = managerMemberships.map(membership => membership.clinicId);
+  const clinicIds = filter.clinicId ? managerMemberships.filter(membership => membership.clinicId === filter.clinicId).map(membership => membership.clinicId) : managerMemberships.map(membership => membership.clinicId);
   if (clinicIds.length === 0) return [];
   const events = await db.select().from(auditEvents).where(and(
     inArray(auditEvents.clinicId, clinicIds),
@@ -330,7 +330,7 @@ function csvCell(value: unknown) {
   return `"${safe.replace(/"/g, '""')}"`;
 }
 
-export async function exportAuditEventsCsvForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date; query?: string } = {}) {
+export async function exportAuditEventsCsvForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date; query?: string; clinicId?: number } = {}) {
   const events = await listAuditEventsForManager(managerUserId, filter);
   const rows = [
     ["التاريخ UTC", "نوع الحدث", "الملخص التشغيلي", "المنفذ", "نوع المورد", "معرف المورد"],
