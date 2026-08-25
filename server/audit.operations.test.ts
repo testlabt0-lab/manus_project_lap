@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ listAuditEventsForManager: vi.fn() }));
+const mocks = vi.hoisted(() => ({ listAuditEventsForManager: vi.fn(), exportAuditEventsCsvForManager: vi.fn() }));
 
 vi.mock("./db", () => ({
-  assignVisit: vi.fn(), createVisitForPatient: vi.fn(), ensureDemoClinicianForOperationalClinic: vi.fn(), finalizeReport: vi.fn(), getInvoiceForPatient: vi.fn(), getReportForPatient: vi.fn(), getVisitById: vi.fn(), getVisitForPatient: vi.fn(), listActiveMembershipsForUser: vi.fn(), listAssignedVisitsForUser: vi.fn(), listAuditEventsForManager: mocks.listAuditEventsForManager, listManagedStaffMemberships: vi.fn(), listOperationalVisits: vi.fn(), listStaffForOperationalClinics: vi.fn(), listVisitsForPatient: vi.fn(), recordDemoPayment: vi.fn(), setManagedStaffMembershipStatus: vi.fn(), transitionVisit: vi.fn(),
+  assignVisit: vi.fn(), createVisitForPatient: vi.fn(), ensureDemoClinicianForOperationalClinic: vi.fn(), exportAuditEventsCsvForManager: mocks.exportAuditEventsCsvForManager, finalizeReport: vi.fn(), getInvoiceForPatient: vi.fn(), getReportForPatient: vi.fn(), getVisitById: vi.fn(), getVisitForPatient: vi.fn(), listActiveMembershipsForUser: vi.fn(), listAssignedVisitsForUser: vi.fn(), listAuditEventsForManager: mocks.listAuditEventsForManager, listManagedStaffMemberships: vi.fn(), listOperationalVisits: vi.fn(), listStaffForOperationalClinics: vi.fn(), listVisitsForPatient: vi.fn(), recordDemoPayment: vi.fn(), setManagedStaffMembershipStatus: vi.fn(), transitionVisit: vi.fn(),
 }));
 
 import { appRouter } from "./routers";
@@ -39,6 +39,20 @@ describe("audit operations", () => {
   it("rejects an audit query shorter than two characters", async () => {
     const caller = appRouter.createCaller(context("admin"));
     await expect(caller.audit.listOperations({ query: "أ" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("exports the manager-scoped audit rows as CSV using the active filters", async () => {
+    const exportResult = { filename: "medicare-audit-2026-08-24.csv", content: "\ufeff\"التاريخ UTC\"" };
+    mocks.exportAuditEventsCsvForManager.mockResolvedValue(exportResult);
+    const caller = appRouter.createCaller(context("admin"));
+    const filter = { eventType: "VISIT_STATE_CHANGED" as const, query: "V-1024" };
+    await expect(caller.audit.exportCsv(filter)).resolves.toEqual(exportResult);
+    expect(mocks.exportAuditEventsCsvForManager).toHaveBeenCalledWith(71, filter);
+  });
+
+  it("rejects CSV export for a non-administrator", async () => {
+    const caller = appRouter.createCaller(context("user"));
+    await expect(caller.audit.exportCsv()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("rejects an inverted audit date window before querying the data layer", async () => {

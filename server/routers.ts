@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, finalizeReport, getInvoiceForPatient, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedStaffMemberships, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, transitionVisit } from "./db";
+import { assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, finalizeReport, getInvoiceForPatient, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedStaffMemberships, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, transitionVisit } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -73,6 +73,10 @@ export const appRouter = router({
     listOperations: adminProcedure.input(z.object({ eventType: z.enum(auditEventTypes).optional(), from: z.date().optional(), to: z.date().optional(), query: z.string().trim().min(2).max(80).optional() }).optional()).query(({ ctx, input }) => {
       if (input?.from && input.to && input.from > input.to) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid audit date range" });
       return listAuditEventsForManager(ctx.user.id, input);
+    }),
+    exportCsv: adminProcedure.input(z.object({ eventType: z.enum(auditEventTypes).optional(), from: z.date().optional(), to: z.date().optional(), query: z.string().trim().min(2).max(80).optional() }).optional()).query(({ ctx, input }) => {
+      if (input?.from && input.to && input.from > input.to) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid audit date range" });
+      return exportAuditEventsCsvForManager(ctx.user.id, input);
     }),
   }),
   outputs: router({

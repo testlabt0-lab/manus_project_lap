@@ -177,6 +177,24 @@ export async function listAuditEventsForManager(managerUserId: number, filter: {
   return events.map(event => ({ ...event, actorName: actorUsers.find(user => user.id === event.actorUserId)?.name ?? "مستخدم تشغيلي" }));
 }
 
+function csvCell(value: unknown) {
+  const normalized = String(value ?? "").replace(/[\r\n]+/g, " ");
+  const safe = /^[=+\-@]/.test(normalized) ? `'${normalized}` : normalized;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
+export async function exportAuditEventsCsvForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date; query?: string } = {}) {
+  const events = await listAuditEventsForManager(managerUserId, filter);
+  const rows = [
+    ["التاريخ UTC", "نوع الحدث", "الملخص التشغيلي", "المنفذ", "نوع المورد", "معرف المورد"],
+    ...events.map(event => [new Date(event.createdAt).toISOString(), event.eventType, event.summary, event.actorName, event.resourceType, event.resourceId]),
+  ];
+  return {
+    filename: `medicare-audit-${new Date().toISOString().slice(0, 10)}.csv`,
+    content: `\ufeff${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}`,
+  };
+}
+
 export async function setManagedStaffMembershipStatus(input: { managerUserId: number; membershipId: number; status: "ACTIVE" | "INACTIVE" }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
