@@ -40,6 +40,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const trendCsv = trpc.notifications.exportResponseTrendCsv.useQuery({ days: reportDays, clinicId: selectedClinicId ?? undefined }, { enabled: false });
   const [minimumAcknowledgementRate, setMinimumAcknowledgementRate] = useState<50 | 60 | 70 | 80 | 90>(70);
   const responsePreference = trpc.notifications.getResponsePreference.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
+  const thresholdLastChange = trpc.notifications.thresholdLastChange.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
   const thresholdAlert = trpc.notifications.responseThresholdAlert.useQuery({ days: reportDays, minimumAcknowledgementRate, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
   const [filter, setFilter] = useState<ManagerNotificationFilter>("ALL");
   const [sort, setSort] = useState<ManagerNotificationSort>("PENDING_FIRST");
@@ -82,6 +83,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
       setMinimumAcknowledgementRate(savedRate);
       toast.success("تم حفظ عتبة التأكيد لهذا الحساب.");
       utils.notifications.getResponsePreference.invalidate();
+      utils.notifications.thresholdLastChange.invalidate();
       utils.notifications.responseThresholdAlert.invalidate();
       utils.audit.listOperations.invalidate();
     },
@@ -152,6 +154,9 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
         {thresholdAlert.data.hasData && thresholdAlert.data.isBelowThreshold && <p className="text-sm font-semibold leading-7 text-[#9a5e16]">نسبة التأكيد الحالية {thresholdAlert.data.acknowledgementRate}% أقل من العتبة المختارة {thresholdAlert.data.minimumAcknowledgementRate}% بفارق {Math.abs(thresholdAlert.data.rateGap ?? 0)} نقطة مئوية.</p>}
         {thresholdAlert.data.hasData && !thresholdAlert.data.isBelowThreshold && <p className="text-sm font-semibold leading-7 text-[#0b776b]">نسبة التأكيد الحالية {thresholdAlert.data.acknowledgementRate}% ضمن العتبة المختارة {thresholdAlert.data.minimumAcknowledgementRate}%.</p>}
         <p className="mt-2 text-xs leading-6 text-[#6b867e]">تُحفظ العتبة لحساب المدير، ويقيّم التنبيه فقط الإشعارات المتاحة ضمن عضويات المدير النشطة. يسجّل الخادم أي تغيير فعلي للعتبة في سجل التدقيق التشغيلي للعيادة.</p>
+        {thresholdLastChange.isLoading && <p className="mt-2 text-xs text-[#6b867e]">جارٍ تحميل آخر تغيير محفوظ…</p>}
+        {!thresholdLastChange.isLoading && thresholdLastChange.data && <p className="mt-2 text-xs leading-6 text-[#31584f]">آخر تغيير: {thresholdLastChange.data.summary} نفّذه {thresholdLastChange.data.actorName} بتاريخ {new Date(thresholdLastChange.data.createdAt).toLocaleString("ar-SA")}.</p>}
+        {!thresholdLastChange.isLoading && thresholdLastChange.data === null && <p className="mt-2 text-xs text-[#6b867e]">لا يوجد تغيير عتبة مسجّل لهذه العيادة بعد.</p>}
       </div>}
     </section>
 
