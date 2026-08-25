@@ -142,6 +142,24 @@ export async function listManagerNotifications(managerUserId: number) {
   return db.select().from(managerNotifications).where(and(eq(managerNotifications.managerUserId, managerUserId), inArray(managerNotifications.clinicId, clinicIds))).orderBy(desc(managerNotifications.createdAt)).limit(30);
 }
 
+export async function getManagerNotificationResponseReport(managerUserId: number) {
+  const notifications = await listManagerNotifications(managerUserId);
+  const acknowledged = notifications.filter(notification => notification.acknowledgedAt);
+  const totalResponseMinutes = acknowledged.reduce((sum, notification) => {
+    const respondedAt = new Date(notification.acknowledgedAt!).getTime();
+    const createdAt = new Date(notification.createdAt).getTime();
+    return sum + Math.max(0, Math.round((respondedAt - createdAt) / 60_000));
+  }, 0);
+  const pending = notifications.length - acknowledged.length;
+  return {
+    total: notifications.length,
+    pending,
+    acknowledged: acknowledged.length,
+    acknowledgementRate: notifications.length === 0 ? 0 : Math.round((acknowledged.length / notifications.length) * 100),
+    averageResponseMinutes: acknowledged.length === 0 ? null : Math.round(totalResponseMinutes / acknowledged.length),
+  };
+}
+
 export async function acknowledgeManagerNotification(managerUserId: number, notificationId: number) {
   const db = await getDb();
   if (!db) return undefined;
