@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ listAuditEventsForManager: vi.fn(), exportAuditEventsCsvForManager: vi.fn(), exportManagerNotificationResponseCsv: vi.fn(), listOperationalVisits: vi.fn(), listManagerNotifications: vi.fn(), getManagerNotificationResponseReport: vi.fn(), getManagerNotificationResponseComparison: vi.fn(), acknowledgeManagerNotification: vi.fn(), acknowledgeAllManagerNotifications: vi.fn() }));
+const mocks = vi.hoisted(() => ({ listAuditEventsForManager: vi.fn(), exportAuditEventsCsvForManager: vi.fn(), exportManagerNotificationResponseCsv: vi.fn(), listOperationalVisits: vi.fn(), listManagerNotifications: vi.fn(), getManagerNotificationResponseReport: vi.fn(), getManagerNotificationResponseComparison: vi.fn(), getManagerNotificationResponseTrend: vi.fn(), acknowledgeManagerNotification: vi.fn(), acknowledgeAllManagerNotifications: vi.fn() }));
 
 vi.mock("./db", () => ({
-  acknowledgeAllManagerNotifications: mocks.acknowledgeAllManagerNotifications, acknowledgeManagerNotification: mocks.acknowledgeManagerNotification, assignVisit: vi.fn(), createVisitForPatient: vi.fn(), ensureDemoClinicianForOperationalClinic: vi.fn(), exportAuditEventsCsvForManager: mocks.exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv: mocks.exportManagerNotificationResponseCsv, finalizeReport: vi.fn(), getInvoiceForPatient: vi.fn(), getManagerNotificationResponseComparison: mocks.getManagerNotificationResponseComparison, getManagerNotificationResponseReport: mocks.getManagerNotificationResponseReport, getReportForPatient: vi.fn(), getVisitById: vi.fn(), getVisitForPatient: vi.fn(), listActiveMembershipsForUser: vi.fn(), listAssignedVisitsForUser: vi.fn(), listAuditEventsForManager: mocks.listAuditEventsForManager, listManagedStaffMemberships: vi.fn(), listManagerNotifications: mocks.listManagerNotifications, listOperationalVisits: mocks.listOperationalVisits, listStaffForOperationalClinics: vi.fn(), listVisitsForPatient: vi.fn(), recordDemoPayment: vi.fn(), setManagedStaffMembershipStatus: vi.fn(), transitionVisit: vi.fn(),
+  acknowledgeAllManagerNotifications: mocks.acknowledgeAllManagerNotifications, acknowledgeManagerNotification: mocks.acknowledgeManagerNotification, assignVisit: vi.fn(), createVisitForPatient: vi.fn(), ensureDemoClinicianForOperationalClinic: vi.fn(), exportAuditEventsCsvForManager: mocks.exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv: mocks.exportManagerNotificationResponseCsv, finalizeReport: vi.fn(), getInvoiceForPatient: vi.fn(), getManagerNotificationResponseComparison: mocks.getManagerNotificationResponseComparison, getManagerNotificationResponseReport: mocks.getManagerNotificationResponseReport, getManagerNotificationResponseTrend: mocks.getManagerNotificationResponseTrend, getReportForPatient: vi.fn(), getVisitById: vi.fn(), getVisitForPatient: vi.fn(), listActiveMembershipsForUser: vi.fn(), listAssignedVisitsForUser: vi.fn(), listAuditEventsForManager: mocks.listAuditEventsForManager, listManagedStaffMemberships: vi.fn(), listManagerNotifications: mocks.listManagerNotifications, listOperationalVisits: mocks.listOperationalVisits, listStaffForOperationalClinics: vi.fn(), listVisitsForPatient: vi.fn(), recordDemoPayment: vi.fn(), setManagedStaffMembershipStatus: vi.fn(), transitionVisit: vi.fn(),
 }));
 
 import { appRouter } from "./routers";
@@ -106,6 +106,14 @@ describe("audit operations", () => {
     expect(mocks.getManagerNotificationResponseComparison).toHaveBeenCalledWith(71, 7);
   });
 
+  it("returns a daily response trend for the current manager and selected period", async () => {
+    const trend = [{ date: "2026-08-25", total: 2, acknowledged: 1, pending: 1, acknowledgementRate: 50 }];
+    mocks.getManagerNotificationResponseTrend.mockResolvedValue(trend);
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.notifications.responseTrend({ days: 7 })).resolves.toEqual(trend);
+    expect(mocks.getManagerNotificationResponseTrend).toHaveBeenCalledWith(71, 7);
+  });
+
   it("exports response metrics as CSV for the requested report period", async () => {
     mocks.exportManagerNotificationResponseCsv.mockResolvedValue({ filename: "medicare-notification-response-7d.csv", content: "\ufeff\"الفترة بالأيام\"" });
     const caller = appRouter.createCaller(context("admin"));
@@ -121,6 +129,11 @@ describe("audit operations", () => {
   it("rejects a response comparison for a non-administrator", async () => {
     const caller = appRouter.createCaller(context("user"));
     await expect(caller.notifications.responseComparison({ days: 7 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("rejects a response trend for a non-administrator", async () => {
+    const caller = appRouter.createCaller(context("user"));
+    await expect(caller.notifications.responseTrend({ days: 7 })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("acknowledges only a notification accepted by the manager-scoped data layer", async () => {

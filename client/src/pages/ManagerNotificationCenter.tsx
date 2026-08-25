@@ -1,7 +1,9 @@
 import { Bell, Check, ShieldCheck } from "lucide-react";
 import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { trpc } from "@/lib/trpc";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { useMemo, useState } from "react";
 import {
@@ -16,6 +18,14 @@ function signedValue(value: number, suffix = "") {
   return `${value > 0 ? "+" : ""}${value}${suffix}`;
 }
 
+const trendChartConfig = {
+  acknowledgementRate: { label: "نسبة التأكيد", color: "#0b776b" },
+} satisfies ChartConfig;
+
+function formatUtcDayLabel(date: string) {
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00.000Z`));
+}
+
 export function ManagerNotificationCenter({ navigate }: { navigate: (to: string) => void }) {
   const { isAuthenticated } = useAuth();
   const utils = trpc.useUtils();
@@ -23,6 +33,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const [reportDays, setReportDays] = useState<7 | 30 | 90>(30);
   const report = trpc.notifications.responseReport.useQuery({ days: reportDays }, { enabled: isAuthenticated });
   const comparison = trpc.notifications.responseComparison.useQuery({ days: reportDays }, { enabled: isAuthenticated });
+  const trend = trpc.notifications.responseTrend.useQuery({ days: reportDays }, { enabled: isAuthenticated });
   const csv = trpc.notifications.exportResponseCsv.useQuery({ days: reportDays }, { enabled: false });
   const [filter, setFilter] = useState<ManagerNotificationFilter>("ALL");
   const [sort, setSort] = useState<ManagerNotificationSort>("PENDING_FIRST");
@@ -31,6 +42,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
     utils.notifications.listMine.invalidate();
     utils.notifications.responseReport.invalidate();
     utils.notifications.responseComparison.invalidate();
+    utils.notifications.responseTrend.invalidate();
     utils.audit.listOperations.invalidate();
   };
 
@@ -63,6 +75,8 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const unread = report.data?.pending ?? all.filter(item => !item.acknowledgedAt).length;
   const items = useMemo(() => sortManagerNotifications(filterManagerNotifications(all, filter), sort), [all, filter, sort]);
   const comparisonData = comparison.data;
+  const trendData = useMemo(() => (trend.data ?? []).map(point => ({ ...point, label: formatUtcDayLabel(point.date) })), [trend.data]);
+  const trendTotals = useMemo(() => trendData.reduce((totals, point) => ({ total: totals.total + point.total, pending: totals.pending + point.pending }), { total: 0, pending: 0 }), [trendData]);
 
   if (!isAuthenticated) {
     return <main className="shell page-wrap"><section className="panel mx-auto max-w-2xl py-12 text-center"><ShieldCheck className="mx-auto text-[#0b776b]" size={34}/><h1 className="mt-4 text-xl font-bold text-[#31584f]">مركز إشعارات محمي</h1><p className="mt-3 text-sm text-[#6b867e]">سجّل الدخول بحساب مدير لعرض الإشعارات.</p><button className="primary-btn mt-6" onClick={startLogin}>تسجيل الدخول</button></section></main>;
@@ -116,6 +130,37 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
       </div>}
       {!comparison.isLoading && !comparison.isError && !comparisonData && <p className="py-5 text-sm text-[#6f887f]">لا تتوفر بيانات مقارنة للفترة المختارة.</p>}
       <p className="mt-4 text-xs leading-6 text-[#6b867e]">الفروق وصفية وليست معياراً طبياً. تغطي المقارنة آخر 30 إشعاراً فقط ولا تعرض عناوين الإشعارات أو رسائلها في التصدير.</p>
+    </section>
+
+    <section className="panel mt-5" aria-labelledby="response-trend-title">
+      <div className="section-head">
+        <div>
+          <h2 id="response-trend-title" className="section-title">اتجاه الاستجابة اليومي</h2>
+          <p className="section-copy">نسبة التأكيد لكل يوم من آخر {reportDays} يوماً؛ تُعرض الأيام بالتوقيت العالمي UTC لتوحيد التجميع.</p>
+        </div>
+        <span className="badge">اتجاه {reportDays} يوماً</span>
+      </div>
+
+      {trend.isLoading && <p className="py-5 text-sm text-[#6f887f]">جارٍ إعداد الاتجاه اليومي…</p>}
+      {trend.isError && <p className="mt-4 rounded-2xl bg-[#fff5e9] p-4 text-sm text-[#9a5e16]">تعذر تحميل الاتجاه اليومي الآن. تبقى المؤشرات والمقارنة الزمنية متاحة.</p>}
+      {!trend.isLoading && !trend.isError && <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="rounded-2xl border border-[#dbe9e4] bg-[#fbfefd] p-4">
+          <ChartContainer config={trendChartConfig} className="h-60 w-full aspect-auto" dir="ltr">
+            <BarChart data={trendData} margin={{ top: 12, right: 8, left: -20, bottom: 0 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={18} />
+              <YAxis domain={[0, 100]} unit="%" tickLine={false} axisLine={false} width={38} />
+              <ChartTooltip cursor={{ fill: "#e7f6f1" }} content={<ChartTooltipContent />} />
+              <Bar dataKey="acknowledgementRate" fill="var(--color-acknowledgementRate)" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ChartContainer>
+        </div>
+        <dl className="grid grid-cols-2 gap-3 lg:grid-cols-1">
+          <div className="rounded-2xl bg-[#f5faf8] p-4"><dt className="text-xs text-[#6b867e]">إشعارات الفترة</dt><dd className="mt-2 text-2xl font-bold text-[#31584f]">{trendTotals.total}</dd></div>
+          <div className="rounded-2xl bg-[#fffaf0] p-4"><dt className="text-xs text-[#6b867e]">غير مؤكدة بالفترة</dt><dd className="mt-2 text-2xl font-bold text-[#31584f]">{trendTotals.pending}</dd></div>
+          <div className="col-span-2 rounded-2xl border border-[#dbe9e4] bg-white p-4 text-xs leading-6 text-[#6b867e] lg:col-span-1">اليوم الذي لا يحتوي إشعاراً يظهر عند 0% للحفاظ على تسلسل الأيام؛ الرسم وصفي ولا يستنتج معياراً طبياً.</div>
+        </dl>
+      </div>}
     </section>
 
     <section className="panel mt-5">

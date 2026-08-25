@@ -5,7 +5,7 @@ import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { buildVisitCreatedNotification, buildVisitStatusNotification } from "./patientNotificationPolicy";
-import { buildNotificationResponseComparison, buildNotificationResponseReport } from "./notificationResponsePolicy";
+import { buildNotificationResponseComparison, buildNotificationResponseReport, buildNotificationResponseTrend } from "./notificationResponsePolicy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -150,6 +150,10 @@ export async function getManagerNotificationResponseReport(managerUserId: number
 
 export async function getManagerNotificationResponseComparison(managerUserId: number, days = 30) {
   return buildNotificationResponseComparison(await listManagerNotifications(managerUserId), days);
+}
+
+export async function getManagerNotificationResponseTrend(managerUserId: number, days = 30) {
+  return buildNotificationResponseTrend(await listManagerNotifications(managerUserId), days);
 }
 
 export async function exportManagerNotificationResponseCsv(managerUserId: number, days = 30) {
