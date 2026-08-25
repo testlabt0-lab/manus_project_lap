@@ -1,0 +1,17 @@
+import { BellRing, ClipboardCheck, ShieldCheck } from "lucide-react";
+import { startLogin } from "@/const";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
+
+export function NotificationAcknowledgementAudit({ navigate }: { navigate: (to: string) => void }) {
+  const { isAuthenticated } = useAuth();
+  const acknowledgements = trpc.audit.listOperations.useQuery(
+    { eventType: "NOTIFICATION_ACKNOWLEDGED" },
+    { enabled: isAuthenticated },
+  );
+
+  if (!isAuthenticated) return <main className="shell page-wrap"><section className="panel mx-auto max-w-2xl py-12 text-center"><ShieldCheck className="mx-auto text-[#0b776b]" size={34}/><h1 className="mt-4 text-xl font-bold text-[#31584f]">سجل تأكيدات محمي</h1><p className="mt-3 text-sm leading-7 text-[#6b867e]">سجّل الدخول بحساب مدير لمراجعة تأكيدات إشعارات الزيارات المتأخرة داخل عيادتك.</p><button className="primary-btn mt-6" onClick={() => startLogin()}>تسجيل الدخول</button></section></main>;
+  if (acknowledgements.isError) return <main className="shell page-wrap"><section className="panel mx-auto max-w-2xl py-12 text-center"><ShieldCheck className="mx-auto text-[#0b776b]" size={34}/><h1 className="mt-4 text-xl font-bold text-[#31584f]">وصول المدير مطلوب</h1><p className="mt-3 text-sm leading-7 text-[#6b867e]">لا يعرض هذا السجل إلا أحداث عيادات المدير النشطة.</p><button className="outline-btn mt-6" onClick={() => navigate("/notifications")}>مركز الإشعارات</button></section></main>;
+
+  return <main className="shell page-wrap"><div className="page-header"><div><h1>سجل تأكيدات الإشعارات</h1><p>مراجعة آخر أحداث تأكيد الاطلاع داخل نطاق عيادات المدير، دون عرض محتوى سريري أو بيانات دفع.</p></div><button className="outline-btn" onClick={() => navigate("/notifications")}>مركز الإشعارات</button></div><section className="metric-grid"><div className="metric-card"><span className="metric-label">تأكيدات ظاهرة</span><span className="metric-value">{acknowledgements.data?.length ?? 0}</span></div><div className="metric-card"><span className="metric-label">نوع الحدث</span><span className="metric-value text-sm">تأكيد اطلاع</span></div></section><section className="panel mt-5"><div className="section-head"><div><h2 className="section-title">أحداث تأكيد الاطلاع</h2><p className="section-copy">يعرض السجل حدثاً واحداً عند أول تأكيد لكل إشعار، مع المنفذ والطابع الزمني والملخص التشغيلي المحدود.</p></div></div>{acknowledgements.isLoading ? <p className="py-5 text-sm text-[#6f887f]">جارٍ تحميل سجل التأكيدات…</p> : <div className="mt-4 grid gap-3">{acknowledgements.data?.map(event => <article key={event.id} className="rounded-2xl border border-[#dbe9e4] bg-[#fbfefd] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#e7f6f1] text-[#0b776b]"><BellRing size={18}/></span><div><span className="badge badge-success"><ClipboardCheck className="ml-1" size={14}/> تأكيد اطلاع إشعار</span><p className="mt-2 text-sm font-bold text-[#31584f]">{event.summary}</p></div></div><span className="text-xs text-[#718980]">{new Date(event.createdAt).toLocaleString("ar-SA")}</span></div><p className="mt-4 text-xs text-[#718980]">نفّذه: {event.actorName}</p></article>)}{acknowledgements.data?.length === 0 && <div className="rounded-2xl bg-[#f5faf8] p-6 text-center text-sm text-[#6b867e]">لا توجد تأكيدات مسجلة ضمن عياداتك حتى الآن.</div>}</div>}</section></main>;
+}

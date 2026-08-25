@@ -148,8 +148,19 @@ export async function acknowledgeManagerNotification(managerUserId: number, noti
   if (!notification) return undefined;
   const membership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, notification.clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
   if (!membership) return undefined;
+  if (notification.acknowledgedAt) return notification;
   const acknowledgedAt = new Date();
-  await db.update(managerNotifications).set({ acknowledgedAt }).where(eq(managerNotifications.id, notificationId));
+  await db.transaction(async tx => {
+    await tx.update(managerNotifications).set({ acknowledgedAt }).where(eq(managerNotifications.id, notificationId));
+    await tx.insert(auditEvents).values({
+      clinicId: notification.clinicId,
+      actorUserId: managerUserId,
+      eventType: "NOTIFICATION_ACKNOWLEDGED",
+      resourceType: "MANAGER_NOTIFICATION",
+      resourceId: notification.id,
+      summary: "تم تأكيد الاطلاع على إشعار زيارة متأخرة.",
+    });
+  });
   return { ...notification, acknowledgedAt };
 }
 

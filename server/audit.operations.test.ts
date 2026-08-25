@@ -29,6 +29,14 @@ describe("audit operations", () => {
     expect(mocks.listAuditEventsForManager).toHaveBeenCalledWith(71, filter);
   });
 
+  it("accepts the notification acknowledgement event type in a manager-scoped audit filter", async () => {
+    mocks.listAuditEventsForManager.mockResolvedValue([]);
+    const caller = appRouter.createCaller(context("admin"));
+    const filter = { eventType: "NOTIFICATION_ACKNOWLEDGED" as const };
+    await expect(caller.audit.listOperations(filter)).resolves.toEqual([]);
+    expect(mocks.listAuditEventsForManager).toHaveBeenCalledWith(71, filter);
+  });
+
   it("passes a bounded text query to the manager-scoped audit query", async () => {
     mocks.listAuditEventsForManager.mockResolvedValue([]);
     const caller = appRouter.createCaller(context("admin"));

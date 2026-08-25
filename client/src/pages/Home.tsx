@@ -33,12 +33,13 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ManagerNotificationCenter } from "./ManagerNotificationCenter";
+import { NotificationAcknowledgementAudit } from "./NotificationAcknowledgementAudit";
 import { canReadPatientVisitOutput, nextVisitState, progressForVisit, visitStateMeta, type VisitState } from "../../../shared/medicare";
 import { DEMO_VISIT } from "../../../shared/mockData";
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/MediCare_Pro_Manager_Notifications_Source_45572df3.zip";
+const PACKAGE_URL = "/manus-storage/MediCare_Pro_Notification_Audit_Final_Source_80e09b8f.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";
@@ -76,6 +77,7 @@ function TopBar({ path, navigate, role, setRole }: { path: string; navigate: (to
       {patientTabs.map(item => <button className={`nav-item ${path === item.path ? "active" : ""}`} key={item.path} onClick={() => navigate(item.path)}>{item.label}</button>)}
       <button className={`nav-item ${path.startsWith("/operations") || path === "/team" ? "active" : ""}`} onClick={() => navigate(role === "staff" ? "/team" : "/operations")}>لوحات التشغيل</button>
       <button className={`nav-item ${path === "/flow" || path === "/docs" ? "active" : ""}`} onClick={() => navigate("/flow")}>مركز المعرفة</button>
+      <button className={`nav-item ${path === "/notification-audit" ? "active" : ""}`} onClick={() => navigate("/notification-audit")}>سجل التأكيدات</button>
     </nav>
     <div className="flex items-center gap-2">
       <button className={`outline-btn hidden sm:inline-flex ${path === "/notifications" ? "border-[#0b776b] text-[#0b776b]" : ""}`} aria-label="مركز الإشعارات" onClick={() => navigate("/notifications")}> <Bell size={16} /> </button>
@@ -298,6 +300,7 @@ export default function Home() {
   const page = useMemo(() => {
     if (path === "/book") return <BookingPage navigate={navigate}/>;
     if (path === "/notifications") return <ManagerNotificationCenter navigate={navigate}/>;
+    if (path === "/notification-audit") return <NotificationAcknowledgementAudit navigate={navigate}/>;
     if (path.startsWith("/visit/")) return <VisitDetails navigate={navigate} visitState={visitState} setVisitState={setVisitState} visitId={liveVisitId ? Number(liveVisitId) : undefined}/>;
     if (path === "/visits") return <VisitsPage navigate={navigate} visitState={visitState}/>;
     if (path === "/team/report" || reportEditorVisitId) return <ReportComposerPage navigate={navigate} initialVisitId={reportEditorVisitId ? Number(reportEditorVisitId) : undefined}/>;
