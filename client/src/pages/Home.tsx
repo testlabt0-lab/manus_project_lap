@@ -39,7 +39,7 @@ import { DEMO_VISIT } from "../../../shared/mockData";
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/MediCare_Pro_Trend_CSV_Source_154291b6.zip";
+const PACKAGE_URL = "/manus-storage/MediCare_Pro_Threshold_Alert_Source_ea690731.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";

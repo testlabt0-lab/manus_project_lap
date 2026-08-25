@@ -40,3 +40,16 @@ export function buildNotificationResponseTrend(notifications: Array<{ createdAt:
     acknowledgementRate: bucket.total === 0 ? 0 : Math.round((bucket.acknowledged / bucket.total) * 100),
   }));
 }
+
+export function buildNotificationResponseThresholdAlert(notifications: Array<{ createdAt: Date; acknowledgedAt: Date | null }>, days: number, minimumAcknowledgementRate: number, now = Date.now()) {
+  const report = buildNotificationResponseReport(notifications, days, now);
+  const hasData = report.total > 0;
+  const rateGap = hasData ? report.acknowledgementRate - minimumAcknowledgementRate : null;
+  return {
+    ...report,
+    minimumAcknowledgementRate,
+    hasData,
+    isBelowThreshold: hasData && report.acknowledgementRate < minimumAcknowledgementRate,
+    rateGap,
+  };
+}

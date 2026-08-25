@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildNotificationResponseComparison, buildNotificationResponseReport, buildNotificationResponseTrend } from "./notificationResponsePolicy";
+import { buildNotificationResponseComparison, buildNotificationResponseReport, buildNotificationResponseThresholdAlert, buildNotificationResponseTrend } from "./notificationResponsePolicy";
 
 describe("notification response period policy", () => {
   it("excludes notifications created before the selected cutoff", () => {
@@ -39,5 +39,21 @@ describe("notification response trend policy", () => {
       { date: "2026-08-24", total: 1, acknowledged: 0, pending: 1, acknowledgementRate: 0 },
       { date: "2026-08-25", total: 1, acknowledged: 1, pending: 0, acknowledgementRate: 100 },
     ]);
+  });
+});
+
+describe("notification response threshold policy", () => {
+  it("flags only a populated period whose acknowledgement rate is below the requested threshold", () => {
+    const now = new Date("2026-08-25T12:00:00.000Z").getTime();
+    const alert = buildNotificationResponseThresholdAlert([
+      { createdAt: new Date("2026-08-24T12:00:00.000Z"), acknowledgedAt: new Date("2026-08-24T12:10:00.000Z") },
+      { createdAt: new Date("2026-08-24T14:00:00.000Z"), acknowledgedAt: null },
+    ], 7, 70, now);
+    expect(alert).toMatchObject({ total: 2, acknowledgementRate: 50, minimumAcknowledgementRate: 70, hasData: true, isBelowThreshold: true, rateGap: -20 });
+  });
+
+  it("does not flag an empty period as a threshold breach", () => {
+    const alert = buildNotificationResponseThresholdAlert([], 7, 70, new Date("2026-08-25T12:00:00.000Z").getTime());
+    expect(alert).toMatchObject({ total: 0, hasData: false, isBelowThreshold: false, rateGap: null });
   });
 });

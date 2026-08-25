@@ -36,6 +36,8 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const trend = trpc.notifications.responseTrend.useQuery({ days: reportDays }, { enabled: isAuthenticated });
   const csv = trpc.notifications.exportResponseCsv.useQuery({ days: reportDays }, { enabled: false });
   const trendCsv = trpc.notifications.exportResponseTrendCsv.useQuery({ days: reportDays }, { enabled: false });
+  const [minimumAcknowledgementRate, setMinimumAcknowledgementRate] = useState<50 | 60 | 70 | 80 | 90>(70);
+  const thresholdAlert = trpc.notifications.responseThresholdAlert.useQuery({ days: reportDays, minimumAcknowledgementRate }, { enabled: isAuthenticated });
   const [filter, setFilter] = useState<ManagerNotificationFilter>("ALL");
   const [sort, setSort] = useState<ManagerNotificationSort>("PENDING_FIRST");
 
@@ -44,6 +46,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
     utils.notifications.responseReport.invalidate();
     utils.notifications.responseComparison.invalidate();
     utils.notifications.responseTrend.invalidate();
+    utils.notifications.responseThresholdAlert.invalidate();
     utils.audit.listOperations.invalidate();
   };
 
@@ -108,6 +111,24 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
       <div className="metric-card"><span className="metric-label">نسبة التأكيد</span><span className="metric-value">{report.data?.acknowledgementRate ?? 0}%</span></div>
       <div className="metric-card"><span className="metric-label">متوسط الاستجابة</span><span className="metric-value">{report.data?.averageResponseMinutes ?? "—"}</span></div>
       <div className="metric-card"><span className="metric-label">نتائج المرشح</span><span className="metric-value">{items.length}</span></div>
+    </section>
+
+    <section className="panel mt-5" aria-labelledby="response-threshold-title">
+      <div className="section-head">
+        <div>
+          <h2 id="response-threshold-title" className="section-title">تنبيه عتبة التأكيد</h2>
+          <p className="section-copy">تقييم تشغيلي وصفي لنسبة التأكيد في آخر {reportDays} يوماً، دون إرسال تنبيه خارج التطبيق.</p>
+        </div>
+        <label className="field-label text-xs">الحد الأدنى للتأكيد<select className="field-input mt-1 min-w-28" value={minimumAcknowledgementRate} onChange={event => setMinimumAcknowledgementRate(Number(event.target.value) as 50 | 60 | 70 | 80 | 90)}><option value={50}>50%</option><option value={60}>60%</option><option value={70}>70%</option><option value={80}>80%</option><option value={90}>90%</option></select></label>
+      </div>
+      {thresholdAlert.isLoading && <p className="py-5 text-sm text-[#6f887f]">جارٍ تقييم عتبة التأكيد…</p>}
+      {thresholdAlert.isError && <p className="mt-4 rounded-2xl bg-[#fff5e9] p-4 text-sm text-[#9a5e16]">تعذر تقييم العتبة الآن. تبقى المؤشرات والتقارير الأخرى متاحة.</p>}
+      {!thresholdAlert.isLoading && !thresholdAlert.isError && thresholdAlert.data && <div className={`mt-4 rounded-2xl border p-5 ${!thresholdAlert.data.hasData ? "border-[#dbe9e4] bg-[#f5faf8]" : thresholdAlert.data.isBelowThreshold ? "border-[#f4d5a8] bg-[#fffaf0]" : "border-[#cfeadf] bg-[#f3fbf7]"}`}>
+        {!thresholdAlert.data.hasData && <p className="text-sm leading-7 text-[#6b867e]">لا توجد إشعارات ضمن الفترة المختارة، لذلك لم يُسجّل تجاوز أو نجاح للعتبة.</p>}
+        {thresholdAlert.data.hasData && thresholdAlert.data.isBelowThreshold && <p className="text-sm font-semibold leading-7 text-[#9a5e16]">نسبة التأكيد الحالية {thresholdAlert.data.acknowledgementRate}% أقل من العتبة المختارة {thresholdAlert.data.minimumAcknowledgementRate}% بفارق {Math.abs(thresholdAlert.data.rateGap ?? 0)} نقطة مئوية.</p>}
+        {thresholdAlert.data.hasData && !thresholdAlert.data.isBelowThreshold && <p className="text-sm font-semibold leading-7 text-[#0b776b]">نسبة التأكيد الحالية {thresholdAlert.data.acknowledgementRate}% ضمن العتبة المختارة {thresholdAlert.data.minimumAcknowledgementRate}%.</p>}
+        <p className="mt-2 text-xs leading-6 text-[#6b867e]">الإعداد محلي لهذه الجلسة، ويقيّم فقط الإشعارات المتاحة ضمن عضويات المدير النشطة.</p>
+      </div>}
     </section>
 
     <section className="panel mt-5" aria-labelledby="response-comparison-title">
