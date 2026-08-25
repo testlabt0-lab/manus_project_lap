@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ listAuditEventsForManager: vi.fn(), exportAuditEventsCsvForManager: vi.fn(), exportManagerNotificationResponseCsv: vi.fn(), exportManagerNotificationResponseTrendCsv: vi.fn(), listOperationalVisits: vi.fn(), listManagerNotifications: vi.fn(), getManagerNotificationResponseReport: vi.fn(), getManagerNotificationResponseComparison: vi.fn(), getManagerNotificationResponseThresholdAlert: vi.fn(), getManagerNotificationResponseTrend: vi.fn(), acknowledgeManagerNotification: vi.fn(), acknowledgeAllManagerNotifications: vi.fn() }));
+const mocks = vi.hoisted(() => ({ listAuditEventsForManager: vi.fn(), exportAuditEventsCsvForManager: vi.fn(), exportManagerNotificationResponseCsv: vi.fn(), exportManagerNotificationResponseTrendCsv: vi.fn(), listOperationalVisits: vi.fn(), listManagerNotifications: vi.fn(), getManagerNotificationResponseReport: vi.fn(), getManagerNotificationResponseComparison: vi.fn(), getManagerNotificationResponsePreference: vi.fn(), getManagerNotificationResponseThresholdAlert: vi.fn(), getManagerNotificationResponseTrend: vi.fn(), setManagerNotificationResponsePreference: vi.fn(), acknowledgeManagerNotification: vi.fn(), acknowledgeAllManagerNotifications: vi.fn() }));
 
 vi.mock("./db", () => ({
-  acknowledgeAllManagerNotifications: mocks.acknowledgeAllManagerNotifications, acknowledgeManagerNotification: mocks.acknowledgeManagerNotification, assignVisit: vi.fn(), createVisitForPatient: vi.fn(), ensureDemoClinicianForOperationalClinic: vi.fn(), exportAuditEventsCsvForManager: mocks.exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv: mocks.exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv: mocks.exportManagerNotificationResponseTrendCsv, finalizeReport: vi.fn(), getInvoiceForPatient: vi.fn(), getManagerNotificationResponseComparison: mocks.getManagerNotificationResponseComparison, getManagerNotificationResponseReport: mocks.getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert: mocks.getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend: mocks.getManagerNotificationResponseTrend, getReportForPatient: vi.fn(), getVisitById: vi.fn(), getVisitForPatient: vi.fn(), listActiveMembershipsForUser: vi.fn(), listAssignedVisitsForUser: vi.fn(), listAuditEventsForManager: mocks.listAuditEventsForManager, listManagedStaffMemberships: vi.fn(), listManagerNotifications: mocks.listManagerNotifications, listOperationalVisits: mocks.listOperationalVisits, listStaffForOperationalClinics: vi.fn(), listVisitsForPatient: vi.fn(), recordDemoPayment: vi.fn(), setManagedStaffMembershipStatus: vi.fn(), transitionVisit: vi.fn(),
+  acknowledgeAllManagerNotifications: mocks.acknowledgeAllManagerNotifications, acknowledgeManagerNotification: mocks.acknowledgeManagerNotification, assignVisit: vi.fn(), createVisitForPatient: vi.fn(), ensureDemoClinicianForOperationalClinic: vi.fn(), exportAuditEventsCsvForManager: mocks.exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv: mocks.exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv: mocks.exportManagerNotificationResponseTrendCsv, finalizeReport: vi.fn(), getInvoiceForPatient: vi.fn(), getManagerNotificationResponseComparison: mocks.getManagerNotificationResponseComparison, getManagerNotificationResponsePreference: mocks.getManagerNotificationResponsePreference, getManagerNotificationResponseReport: mocks.getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert: mocks.getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend: mocks.getManagerNotificationResponseTrend, getReportForPatient: vi.fn(), getVisitById: vi.fn(), getVisitForPatient: vi.fn(), listActiveMembershipsForUser: vi.fn(), listAssignedVisitsForUser: vi.fn(), listAuditEventsForManager: mocks.listAuditEventsForManager, listManagedStaffMemberships: vi.fn(), listManagerNotifications: mocks.listManagerNotifications, listOperationalVisits: mocks.listOperationalVisits, listStaffForOperationalClinics: vi.fn(), listVisitsForPatient: vi.fn(), recordDemoPayment: vi.fn(), setManagedStaffMembershipStatus: vi.fn(), setManagerNotificationResponsePreference: mocks.setManagerNotificationResponsePreference, transitionVisit: vi.fn(),
 }));
 
 import { appRouter } from "./routers";
@@ -122,6 +122,16 @@ describe("audit operations", () => {
     expect(mocks.getManagerNotificationResponseThresholdAlert).toHaveBeenCalledWith(71, 7, 70);
   });
 
+  it("reads and saves the acknowledgement preference only for the current manager", async () => {
+    mocks.getManagerNotificationResponsePreference.mockResolvedValue({ minimumAcknowledgementRate: 80 });
+    mocks.setManagerNotificationResponsePreference.mockResolvedValue({ minimumAcknowledgementRate: 90 });
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.notifications.getResponsePreference()).resolves.toEqual({ minimumAcknowledgementRate: 80 });
+    await expect(caller.notifications.setResponsePreference({ minimumAcknowledgementRate: 90 })).resolves.toEqual({ minimumAcknowledgementRate: 90 });
+    expect(mocks.getManagerNotificationResponsePreference).toHaveBeenCalledWith(71);
+    expect(mocks.setManagerNotificationResponsePreference).toHaveBeenCalledWith(71, 90);
+  });
+
   it("exports response metrics as CSV for the requested report period", async () => {
     mocks.exportManagerNotificationResponseCsv.mockResolvedValue({ filename: "medicare-notification-response-7d.csv", content: "\ufeff\"الفترة بالأيام\"" });
     const caller = appRouter.createCaller(context("admin"));
@@ -159,6 +169,12 @@ describe("audit operations", () => {
   it("rejects threshold evaluation for a non-administrator", async () => {
     const caller = appRouter.createCaller(context("user"));
     await expect(caller.notifications.responseThresholdAlert({ days: 7, minimumAcknowledgementRate: 70 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("rejects response preference access for a non-administrator", async () => {
+    const caller = appRouter.createCaller(context("user"));
+    await expect(caller.notifications.getResponsePreference()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.notifications.setResponsePreference({ minimumAcknowledgementRate: 70 })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("acknowledges only a notification accepted by the manager-scoped data layer", async () => {

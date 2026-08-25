@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, like, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotifications, medicalReports, patientNotifications, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
@@ -158,6 +158,20 @@ export async function getManagerNotificationResponseTrend(managerUserId: number,
 
 export async function getManagerNotificationResponseThresholdAlert(managerUserId: number, days = 30, minimumAcknowledgementRate = 70) {
   return buildNotificationResponseThresholdAlert(await listManagerNotifications(managerUserId), days, minimumAcknowledgementRate);
+}
+
+export async function getManagerNotificationResponsePreference(managerUserId: number) {
+  const db = await getDb();
+  if (!db) return { minimumAcknowledgementRate: 70 };
+  const [preference] = await db.select({ minimumAcknowledgementRate: managerNotificationPreferences.minimumAcknowledgementRate }).from(managerNotificationPreferences).where(eq(managerNotificationPreferences.managerUserId, managerUserId)).limit(1);
+  return { minimumAcknowledgementRate: preference?.minimumAcknowledgementRate ?? 70 };
+}
+
+export async function setManagerNotificationResponsePreference(managerUserId: number, minimumAcknowledgementRate: 50 | 60 | 70 | 80 | 90) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.insert(managerNotificationPreferences).values({ managerUserId, minimumAcknowledgementRate }).onDuplicateKeyUpdate({ set: { minimumAcknowledgementRate, updatedAt: new Date() } });
+  return { minimumAcknowledgementRate };
 }
 
 export async function exportManagerNotificationResponseCsv(managerUserId: number, days = 30) {

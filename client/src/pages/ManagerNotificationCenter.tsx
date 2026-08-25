@@ -5,7 +5,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { trpc } from "@/lib/trpc";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   filterManagerNotifications,
   sortManagerNotifications,
@@ -37,9 +37,15 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const csv = trpc.notifications.exportResponseCsv.useQuery({ days: reportDays }, { enabled: false });
   const trendCsv = trpc.notifications.exportResponseTrendCsv.useQuery({ days: reportDays }, { enabled: false });
   const [minimumAcknowledgementRate, setMinimumAcknowledgementRate] = useState<50 | 60 | 70 | 80 | 90>(70);
+  const responsePreference = trpc.notifications.getResponsePreference.useQuery(undefined, { enabled: isAuthenticated });
   const thresholdAlert = trpc.notifications.responseThresholdAlert.useQuery({ days: reportDays, minimumAcknowledgementRate }, { enabled: isAuthenticated });
   const [filter, setFilter] = useState<ManagerNotificationFilter>("ALL");
   const [sort, setSort] = useState<ManagerNotificationSort>("PENDING_FIRST");
+
+  useEffect(() => {
+    const savedRate = responsePreference.data?.minimumAcknowledgementRate;
+    if (savedRate === 50 || savedRate === 60 || savedRate === 70 || savedRate === 80 || savedRate === 90) setMinimumAcknowledgementRate(savedRate);
+  }, [responsePreference.data?.minimumAcknowledgementRate]);
 
   const refresh = () => {
     utils.notifications.listMine.invalidate();
@@ -63,6 +69,15 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
       refresh();
     },
     onError: () => toast.error("تعذر تأكيد الإشعارات."),
+  });
+  const saveResponsePreference = trpc.notifications.setResponsePreference.useMutation({
+    onSuccess: ({ minimumAcknowledgementRate: savedRate }) => {
+      setMinimumAcknowledgementRate(savedRate);
+      toast.success("تم حفظ عتبة التأكيد لهذا الحساب.");
+      utils.notifications.getResponsePreference.invalidate();
+      utils.notifications.responseThresholdAlert.invalidate();
+    },
+    onError: () => toast.error("تعذر حفظ عتبة التأكيد."),
   });
   const downloadCsv = async () => {
     const result = await csv.refetch();
@@ -91,6 +106,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const comparisonData = comparison.data;
   const trendData = useMemo(() => (trend.data ?? []).map(point => ({ ...point, label: formatUtcDayLabel(point.date) })), [trend.data]);
   const trendTotals = useMemo(() => trendData.reduce((totals, point) => ({ total: totals.total + point.total, pending: totals.pending + point.pending }), { total: 0, pending: 0 }), [trendData]);
+  const hasUnsavedThreshold = responsePreference.data?.minimumAcknowledgementRate !== minimumAcknowledgementRate;
 
   if (!isAuthenticated) {
     return <main className="shell page-wrap"><section className="panel mx-auto max-w-2xl py-12 text-center"><ShieldCheck className="mx-auto text-[#0b776b]" size={34}/><h1 className="mt-4 text-xl font-bold text-[#31584f]">مركز إشعارات محمي</h1><p className="mt-3 text-sm text-[#6b867e]">سجّل الدخول بحساب مدير لعرض الإشعارات.</p><button className="primary-btn mt-6" onClick={startLogin}>تسجيل الدخول</button></section></main>;
@@ -117,9 +133,9 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
       <div className="section-head">
         <div>
           <h2 id="response-threshold-title" className="section-title">تنبيه عتبة التأكيد</h2>
-          <p className="section-copy">تقييم تشغيلي وصفي لنسبة التأكيد في آخر {reportDays} يوماً، دون إرسال تنبيه خارج التطبيق.</p>
+          <p className="section-copy">تقييم تشغيلي وصفي لنسبة التأكيد في آخر {reportDays} يوماً، دون إرسال تنبيه خارج التطبيق. {responsePreference.isLoading ? "جارٍ استرجاع الإعداد المحفوظ…" : ""}</p>
         </div>
-        <label className="field-label text-xs">الحد الأدنى للتأكيد<select className="field-input mt-1 min-w-28" value={minimumAcknowledgementRate} onChange={event => setMinimumAcknowledgementRate(Number(event.target.value) as 50 | 60 | 70 | 80 | 90)}><option value={50}>50%</option><option value={60}>60%</option><option value={70}>70%</option><option value={80}>80%</option><option value={90}>90%</option></select></label>
+        <div className="flex flex-wrap items-end gap-2"><label className="field-label text-xs">الحد الأدنى للتأكيد<select className="field-input mt-1 min-w-28" value={minimumAcknowledgementRate} onChange={event => setMinimumAcknowledgementRate(Number(event.target.value) as 50 | 60 | 70 | 80 | 90)}><option value={50}>50%</option><option value={60}>60%</option><option value={70}>70%</option><option value={80}>80%</option><option value={90}>90%</option></select></label><button className="outline-btn" disabled={!hasUnsavedThreshold || saveResponsePreference.isPending || responsePreference.isLoading} onClick={() => saveResponsePreference.mutate({ minimumAcknowledgementRate })}>{saveResponsePreference.isPending ? "جارٍ الحفظ…" : "حفظ العتبة"}</button></div>
       </div>
       {thresholdAlert.isLoading && <p className="py-5 text-sm text-[#6f887f]">جارٍ تقييم عتبة التأكيد…</p>}
       {thresholdAlert.isError && <p className="mt-4 rounded-2xl bg-[#fff5e9] p-4 text-sm text-[#9a5e16]">تعذر تقييم العتبة الآن. تبقى المؤشرات والتقارير الأخرى متاحة.</p>}
@@ -127,7 +143,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
         {!thresholdAlert.data.hasData && <p className="text-sm leading-7 text-[#6b867e]">لا توجد إشعارات ضمن الفترة المختارة، لذلك لم يُسجّل تجاوز أو نجاح للعتبة.</p>}
         {thresholdAlert.data.hasData && thresholdAlert.data.isBelowThreshold && <p className="text-sm font-semibold leading-7 text-[#9a5e16]">نسبة التأكيد الحالية {thresholdAlert.data.acknowledgementRate}% أقل من العتبة المختارة {thresholdAlert.data.minimumAcknowledgementRate}% بفارق {Math.abs(thresholdAlert.data.rateGap ?? 0)} نقطة مئوية.</p>}
         {thresholdAlert.data.hasData && !thresholdAlert.data.isBelowThreshold && <p className="text-sm font-semibold leading-7 text-[#0b776b]">نسبة التأكيد الحالية {thresholdAlert.data.acknowledgementRate}% ضمن العتبة المختارة {thresholdAlert.data.minimumAcknowledgementRate}%.</p>}
-        <p className="mt-2 text-xs leading-6 text-[#6b867e]">الإعداد محلي لهذه الجلسة، ويقيّم فقط الإشعارات المتاحة ضمن عضويات المدير النشطة.</p>
+        <p className="mt-2 text-xs leading-6 text-[#6b867e]">تُحفظ العتبة لحساب المدير، ويقيّم التنبيه فقط الإشعارات المتاحة ضمن عضويات المدير النشطة.</p>
       </div>}
     </section>
 
