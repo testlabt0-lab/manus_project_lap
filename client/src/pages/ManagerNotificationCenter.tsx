@@ -41,6 +41,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const [minimumAcknowledgementRate, setMinimumAcknowledgementRate] = useState<50 | 60 | 70 | 80 | 90>(70);
   const responsePreference = trpc.notifications.getResponsePreference.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
   const thresholdLastChange = trpc.notifications.thresholdLastChange.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
+  const thresholdChangeHistory = trpc.notifications.thresholdChangeHistory.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
   const thresholdAlert = trpc.notifications.responseThresholdAlert.useQuery({ days: reportDays, minimumAcknowledgementRate, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
   const [filter, setFilter] = useState<ManagerNotificationFilter>("ALL");
   const [sort, setSort] = useState<ManagerNotificationSort>("PENDING_FIRST");
@@ -84,6 +85,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
       toast.success("تم حفظ عتبة التأكيد لهذا الحساب.");
       utils.notifications.getResponsePreference.invalidate();
       utils.notifications.thresholdLastChange.invalidate();
+      utils.notifications.thresholdChangeHistory.invalidate();
       utils.notifications.responseThresholdAlert.invalidate();
       utils.audit.listOperations.invalidate();
     },
@@ -157,6 +159,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
         {thresholdLastChange.isLoading && <p className="mt-2 text-xs text-[#6b867e]">جارٍ تحميل آخر تغيير محفوظ…</p>}
         {!thresholdLastChange.isLoading && thresholdLastChange.data && <p className="mt-2 text-xs leading-6 text-[#31584f]">آخر تغيير: {thresholdLastChange.data.summary} نفّذه {thresholdLastChange.data.actorName} بتاريخ {new Date(thresholdLastChange.data.createdAt).toLocaleString("ar-SA")}.</p>}
         {!thresholdLastChange.isLoading && thresholdLastChange.data === null && <p className="mt-2 text-xs text-[#6b867e]">لا يوجد تغيير عتبة مسجّل لهذه العيادة بعد.</p>}
+        {!thresholdChangeHistory.isLoading && (thresholdChangeHistory.data?.length ?? 0) > 0 && <div className="mt-3 overflow-x-auto rounded-xl border border-[#dce9e4]"><table className="w-full min-w-[520px] text-right text-xs"><thead className="bg-[#f5faf8] text-[#527169]"><tr><th className="px-3 py-2 font-semibold">التغيير</th><th className="px-3 py-2 font-semibold">المنفذ</th><th className="px-3 py-2 font-semibold">التاريخ</th></tr></thead><tbody>{thresholdChangeHistory.data?.map((event, index) => <tr key={`${event.createdAt.toString()}-${index}`} className="border-t border-[#e7f0ec]"><td className="px-3 py-2 leading-5 text-[#31584f]">{event.summary}</td><td className="px-3 py-2 text-[#527169]">{event.actorName}</td><td className="px-3 py-2 text-[#527169]">{new Date(event.createdAt).toLocaleString("ar-SA")}</td></tr>)}</tbody></table></div>}
       </div>}
     </section>
 

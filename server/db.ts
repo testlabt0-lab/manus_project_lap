@@ -200,6 +200,14 @@ export async function getManagerNotificationThresholdLastChange(managerUserId: n
   return event ?? null;
 }
 
+export async function listManagerNotificationThresholdChanges(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [membership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  if (!membership) return undefined;
+  return db.select({ summary: auditEvents.summary, createdAt: auditEvents.createdAt, actorName: users.name }).from(auditEvents).innerJoin(users, eq(users.id, auditEvents.actorUserId)).where(and(eq(auditEvents.clinicId, clinicId), eq(auditEvents.eventType, "NOTIFICATION_THRESHOLD_CHANGED"))).orderBy(desc(auditEvents.createdAt)).limit(5);
+}
+
 export async function exportManagerNotificationResponseCsv(managerUserId: number, days = 30, clinicId?: number) {
   const report = await getManagerNotificationResponseReport(managerUserId, days, clinicId);
   const rows = [["الفترة بالأيام", "إجمالي الإشعارات", "غير المؤكدة", "المؤكدة", "نسبة التأكيد", "متوسط الاستجابة بالدقائق"], [days, report.total, report.pending, report.acknowledged, `${report.acknowledgementRate}%`, report.averageResponseMinutes ?? ""]];
