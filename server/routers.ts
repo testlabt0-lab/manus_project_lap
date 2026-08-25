@@ -7,6 +7,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { isAllowedVisitTransition } from "./visitPolicy";
+import { getOverdueVisitAlerts } from "./alertPolicy";
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -77,6 +78,12 @@ export const appRouter = router({
     exportCsv: adminProcedure.input(z.object({ eventType: z.enum(auditEventTypes).optional(), from: z.date().optional(), to: z.date().optional(), query: z.string().trim().min(2).max(80).optional() }).optional()).query(({ ctx, input }) => {
       if (input?.from && input.to && input.from > input.to) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid audit date range" });
       return exportAuditEventsCsvForManager(ctx.user.id, input);
+    }),
+  }),
+  alerts: router({
+    listOverdue: adminProcedure.input(z.object({ graceMinutes: z.number().int().min(0).max(1440).default(30) }).optional()).query(async ({ ctx, input }) => {
+      const visits = await listOperationalVisits(ctx.user.id);
+      return getOverdueVisitAlerts(visits, input?.graceMinutes ?? 30);
     }),
   }),
   outputs: router({

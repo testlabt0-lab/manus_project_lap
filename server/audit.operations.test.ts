@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ listAuditEventsForManager: vi.fn(), exportAuditEventsCsvForManager: vi.fn() }));
+const mocks = vi.hoisted(() => ({ listAuditEventsForManager: vi.fn(), exportAuditEventsCsvForManager: vi.fn(), listOperationalVisits: vi.fn() }));
 
 vi.mock("./db", () => ({
-  assignVisit: vi.fn(), createVisitForPatient: vi.fn(), ensureDemoClinicianForOperationalClinic: vi.fn(), exportAuditEventsCsvForManager: mocks.exportAuditEventsCsvForManager, finalizeReport: vi.fn(), getInvoiceForPatient: vi.fn(), getReportForPatient: vi.fn(), getVisitById: vi.fn(), getVisitForPatient: vi.fn(), listActiveMembershipsForUser: vi.fn(), listAssignedVisitsForUser: vi.fn(), listAuditEventsForManager: mocks.listAuditEventsForManager, listManagedStaffMemberships: vi.fn(), listOperationalVisits: vi.fn(), listStaffForOperationalClinics: vi.fn(), listVisitsForPatient: vi.fn(), recordDemoPayment: vi.fn(), setManagedStaffMembershipStatus: vi.fn(), transitionVisit: vi.fn(),
+  assignVisit: vi.fn(), createVisitForPatient: vi.fn(), ensureDemoClinicianForOperationalClinic: vi.fn(), exportAuditEventsCsvForManager: mocks.exportAuditEventsCsvForManager, finalizeReport: vi.fn(), getInvoiceForPatient: vi.fn(), getReportForPatient: vi.fn(), getVisitById: vi.fn(), getVisitForPatient: vi.fn(), listActiveMembershipsForUser: vi.fn(), listAssignedVisitsForUser: vi.fn(), listAuditEventsForManager: mocks.listAuditEventsForManager, listManagedStaffMemberships: vi.fn(), listOperationalVisits: mocks.listOperationalVisits, listStaffForOperationalClinics: vi.fn(), listVisitsForPatient: vi.fn(), recordDemoPayment: vi.fn(), setManagedStaffMembershipStatus: vi.fn(), transitionVisit: vi.fn(),
 }));
 
 import { appRouter } from "./routers";
@@ -53,6 +53,19 @@ describe("audit operations", () => {
   it("rejects CSV export for a non-administrator", async () => {
     const caller = appRouter.createCaller(context("user"));
     await expect(caller.audit.exportCsv()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("returns overdue operational alerts using only the administrator's scoped visits", async () => {
+    mocks.listOperationalVisits.mockResolvedValue([{ id: 9, reference: "V-LATE", serviceName: "طب منزلي", scheduledStart: new Date("2026-08-25T10:00:00.000Z"), state: "ASSIGNED" }]);
+    const caller = appRouter.createCaller(context("admin"));
+    const alerts = await caller.alerts.listOverdue({ graceMinutes: 0 });
+    expect(mocks.listOperationalVisits).toHaveBeenCalledWith(71);
+    expect(alerts[0]).toMatchObject({ visitId: 9, reference: "V-LATE" });
+  });
+
+  it("rejects overdue alert access for a non-administrator", async () => {
+    const caller = appRouter.createCaller(context("user"));
+    await expect(caller.alerts.listOverdue()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("rejects an inverted audit date window before querying the data layer", async () => {
