@@ -35,6 +35,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const comparison = trpc.notifications.responseComparison.useQuery({ days: reportDays }, { enabled: isAuthenticated });
   const trend = trpc.notifications.responseTrend.useQuery({ days: reportDays }, { enabled: isAuthenticated });
   const csv = trpc.notifications.exportResponseCsv.useQuery({ days: reportDays }, { enabled: false });
+  const trendCsv = trpc.notifications.exportResponseTrendCsv.useQuery({ days: reportDays }, { enabled: false });
   const [filter, setFilter] = useState<ManagerNotificationFilter>("ALL");
   const [sort, setSort] = useState<ManagerNotificationSort>("PENDING_FIRST");
 
@@ -63,6 +64,16 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const downloadCsv = async () => {
     const result = await csv.refetch();
     if (!result.data) return toast.error("تعذر إعداد ملف CSV.");
+    const url = URL.createObjectURL(new Blob([result.data.content], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = result.data.filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const downloadTrendCsv = async () => {
+    const result = await trendCsv.refetch();
+    if (!result.data) return toast.error("تعذر إعداد CSV للاتجاه.");
     const url = URL.createObjectURL(new Blob([result.data.content], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
@@ -138,7 +149,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
           <h2 id="response-trend-title" className="section-title">اتجاه الاستجابة اليومي</h2>
           <p className="section-copy">نسبة التأكيد لكل يوم من آخر {reportDays} يوماً؛ تُعرض الأيام بالتوقيت العالمي UTC لتوحيد التجميع.</p>
         </div>
-        <span className="badge">اتجاه {reportDays} يوماً</span>
+        <div className="flex flex-wrap items-center gap-2"><span className="badge">اتجاه {reportDays} يوماً</span><button className="outline-btn" disabled={trendCsv.isFetching} onClick={downloadTrendCsv}>{trendCsv.isFetching ? "جارٍ إعداد CSV…" : "تنزيل CSV للاتجاه"}</button></div>
       </div>
 
       {trend.isLoading && <p className="py-5 text-sm text-[#6f887f]">جارٍ إعداد الاتجاه اليومي…</p>}

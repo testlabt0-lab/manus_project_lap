@@ -162,6 +162,12 @@ export async function exportManagerNotificationResponseCsv(managerUserId: number
   return { filename: `medicare-notification-response-${days}d-${new Date().toISOString().slice(0, 10)}.csv`, content: `\ufeff${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}` };
 }
 
+export async function exportManagerNotificationResponseTrendCsv(managerUserId: number, days = 30) {
+  const trend = await getManagerNotificationResponseTrend(managerUserId, days);
+  const rows = [["التاريخ UTC", "إجمالي الإشعارات", "غير المؤكدة", "المؤكدة", "نسبة التأكيد"], ...trend.map(point => [point.date, point.total, point.pending, point.acknowledged, `${point.acknowledgementRate}%`])];
+  return { filename: `medicare-notification-response-trend-${days}d-${new Date().toISOString().slice(0, 10)}.csv`, content: `\ufeff${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}` };
+}
+
 export async function acknowledgeManagerNotification(managerUserId: number, notificationId: number) {
   const db = await getDb();
   if (!db) return undefined;
