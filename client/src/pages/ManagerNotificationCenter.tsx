@@ -159,7 +159,12 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
         {thresholdLastChange.isLoading && <p className="mt-2 text-xs text-[#6b867e]">جارٍ تحميل آخر تغيير محفوظ…</p>}
         {!thresholdLastChange.isLoading && thresholdLastChange.data && <p className="mt-2 text-xs leading-6 text-[#31584f]">آخر تغيير: {thresholdLastChange.data.summary} نفّذه {thresholdLastChange.data.actorName} بتاريخ {new Date(thresholdLastChange.data.createdAt).toLocaleString("ar-SA")}.</p>}
         {!thresholdLastChange.isLoading && thresholdLastChange.data === null && <p className="mt-2 text-xs text-[#6b867e]">لا يوجد تغيير عتبة مسجّل لهذه العيادة بعد.</p>}
+        <div className="mt-4 border-t border-[#e7f0ec] pt-3"><p className="text-xs font-bold text-[#31584f]">آخر تغييرات العتبة</p>
+        {thresholdChangeHistory.isLoading && <p className="mt-2 text-xs text-[#6b867e]">يجري تحميل تاريخ تغييرات العتبة…</p>}
+        {thresholdChangeHistory.isError && <p className="mt-2 text-xs text-rose-700">تعذر تحميل تاريخ تغييرات العتبة لهذه العيادة.</p>}
+        {!thresholdChangeHistory.isLoading && !thresholdChangeHistory.isError && thresholdChangeHistory.data?.length === 0 && <p className="mt-2 text-xs text-[#6b867e]">لا توجد تغييرات مسجلة للعرض حتى الآن.</p>}
         {!thresholdChangeHistory.isLoading && (thresholdChangeHistory.data?.length ?? 0) > 0 && <div className="mt-3 overflow-x-auto rounded-xl border border-[#dce9e4]"><table className="w-full min-w-[520px] text-right text-xs"><thead className="bg-[#f5faf8] text-[#527169]"><tr><th className="px-3 py-2 font-semibold">التغيير</th><th className="px-3 py-2 font-semibold">المنفذ</th><th className="px-3 py-2 font-semibold">التاريخ</th></tr></thead><tbody>{thresholdChangeHistory.data?.map((event, index) => <tr key={`${event.createdAt.toString()}-${index}`} className="border-t border-[#e7f0ec]"><td className="px-3 py-2 leading-5 text-[#31584f]">{event.summary}</td><td className="px-3 py-2 text-[#527169]">{event.actorName}</td><td className="px-3 py-2 text-[#527169]">{new Date(event.createdAt).toLocaleString("ar-SA")}</td></tr>)}</tbody></table></div>}
+        </div>
       </div>}
     </section>
 
