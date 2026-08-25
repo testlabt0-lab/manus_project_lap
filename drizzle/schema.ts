@@ -95,6 +95,23 @@ export const auditEvents = mysqlTable("audit_events", {
   index("audit_events_resource_idx").on(table.resourceType, table.resourceId),
 ]);
 
+export const managerNotificationTypes = ["OVERDUE_VISIT"] as const;
+
+export const managerNotifications = mysqlTable("manager_notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull(),
+  managerUserId: int("managerUserId").notNull(),
+  visitId: int("visitId").notNull(),
+  notificationType: mysqlEnum("notificationType", managerNotificationTypes).notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  message: varchar("message", { length: 255 }).notNull(),
+  acknowledgedAt: timestamp("acknowledgedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("manager_notifications_manager_created_idx").on(table.managerUserId, table.createdAt),
+  index("manager_notifications_clinic_visit_idx").on(table.clinicId, table.visitId),
+]);
+
 export const medicalReports = mysqlTable("medical_reports", {
   id: int("id").autoincrement().primaryKey(),
   visitId: int("visitId").notNull().unique(),
@@ -122,6 +139,22 @@ export const payments = mysqlTable("payments", {
   recordedAt: timestamp("recordedAt").defaultNow().notNull(),
 }, table => [
   index("payments_invoice_idx").on(table.invoiceId),
+]);
+
+export const mobileAuthSessions = mysqlTable("mobile_auth_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  nonce: varchar("nonce", { length: 96 }).notNull().unique(),
+  appRedirectUri: varchar("appRedirectUri", { length: 255 }).notNull(),
+  appState: varchar("appState", { length: 512 }).notNull(),
+  codeChallenge: varchar("codeChallenge", { length: 128 }).notNull(),
+  authorizationCodeHash: varchar("authorizationCodeHash", { length: 64 }).unique(),
+  userId: int("userId"),
+  expiresAt: timestamp("expiresAt").notNull(),
+  authorizedAt: timestamp("authorizedAt"),
+  consumedAt: timestamp("consumedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("mobile_auth_sessions_expiry_idx").on(table.expiresAt),
 ]);
 
 export type Visit = typeof visits.$inferSelect;

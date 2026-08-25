@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ listAuditEventsForManager: vi.fn(), exportAuditEventsCsvForManager: vi.fn(), listOperationalVisits: vi.fn() }));
+const mocks = vi.hoisted(() => ({ listAuditEventsForManager: vi.fn(), exportAuditEventsCsvForManager: vi.fn(), listOperationalVisits: vi.fn(), listManagerNotifications: vi.fn(), acknowledgeManagerNotification: vi.fn() }));
 
 vi.mock("./db", () => ({
-  assignVisit: vi.fn(), createVisitForPatient: vi.fn(), ensureDemoClinicianForOperationalClinic: vi.fn(), exportAuditEventsCsvForManager: mocks.exportAuditEventsCsvForManager, finalizeReport: vi.fn(), getInvoiceForPatient: vi.fn(), getReportForPatient: vi.fn(), getVisitById: vi.fn(), getVisitForPatient: vi.fn(), listActiveMembershipsForUser: vi.fn(), listAssignedVisitsForUser: vi.fn(), listAuditEventsForManager: mocks.listAuditEventsForManager, listManagedStaffMemberships: vi.fn(), listOperationalVisits: mocks.listOperationalVisits, listStaffForOperationalClinics: vi.fn(), listVisitsForPatient: vi.fn(), recordDemoPayment: vi.fn(), setManagedStaffMembershipStatus: vi.fn(), transitionVisit: vi.fn(),
+  acknowledgeManagerNotification: mocks.acknowledgeManagerNotification, assignVisit: vi.fn(), createVisitForPatient: vi.fn(), ensureDemoClinicianForOperationalClinic: vi.fn(), exportAuditEventsCsvForManager: mocks.exportAuditEventsCsvForManager, finalizeReport: vi.fn(), getInvoiceForPatient: vi.fn(), getReportForPatient: vi.fn(), getVisitById: vi.fn(), getVisitForPatient: vi.fn(), listActiveMembershipsForUser: vi.fn(), listAssignedVisitsForUser: vi.fn(), listAuditEventsForManager: mocks.listAuditEventsForManager, listManagedStaffMemberships: vi.fn(), listManagerNotifications: mocks.listManagerNotifications, listOperationalVisits: mocks.listOperationalVisits, listStaffForOperationalClinics: vi.fn(), listVisitsForPatient: vi.fn(), recordDemoPayment: vi.fn(), setManagedStaffMembershipStatus: vi.fn(), transitionVisit: vi.fn(),
 }));
 
 import { appRouter } from "./routers";
@@ -66,6 +66,26 @@ describe("audit operations", () => {
   it("rejects overdue alert access for a non-administrator", async () => {
     const caller = appRouter.createCaller(context("user"));
     await expect(caller.alerts.listOverdue()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("lists manager notifications through the current administrator identity", async () => {
+    mocks.listManagerNotifications.mockResolvedValue([{ id: 41, title: "زيارة متأخرة: V-LATE", acknowledgedAt: null }]);
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.notifications.listMine()).resolves.toHaveLength(1);
+    expect(mocks.listManagerNotifications).toHaveBeenCalledWith(71);
+  });
+
+  it("acknowledges only a notification accepted by the manager-scoped data layer", async () => {
+    mocks.acknowledgeManagerNotification.mockResolvedValue({ id: 41, acknowledgedAt: new Date() });
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.notifications.acknowledge({ notificationId: 41 })).resolves.toMatchObject({ id: 41 });
+    expect(mocks.acknowledgeManagerNotification).toHaveBeenCalledWith(71, 41);
+  });
+
+  it("rejects notification acknowledgement outside the manager scope", async () => {
+    mocks.acknowledgeManagerNotification.mockResolvedValue(undefined);
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.notifications.acknowledge({ notificationId: 999 })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("rejects an inverted audit date window before querying the data layer", async () => {

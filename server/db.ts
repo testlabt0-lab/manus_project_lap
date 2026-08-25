@@ -1,8 +1,9 @@
 import { and, desc, eq, gte, inArray, like, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, medicalReports, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotifications, medicalReports, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
+import { getOverdueVisitAlerts } from "./alertPolicy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -112,6 +113,44 @@ export async function listOperationalVisits(userId: number) {
   const clinicIds = memberships.map(membership => membership.clinicId);
   if (clinicIds.length === 0) return [];
   return db.select().from(visits).where(inArray(visits.clinicId, clinicIds)).orderBy(desc(visits.scheduledStart));
+}
+
+export async function listManagerNotifications(managerUserId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const managerMemberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
+  const clinicIds = managerMemberships.map(membership => membership.clinicId);
+  if (clinicIds.length === 0) return [];
+  const scopedVisits = await db.select().from(visits).where(inArray(visits.clinicId, clinicIds)).orderBy(desc(visits.scheduledStart));
+  const overdue = getOverdueVisitAlerts(scopedVisits, 30);
+  const existing = await db.select().from(managerNotifications).where(and(eq(managerNotifications.managerUserId, managerUserId), inArray(managerNotifications.clinicId, clinicIds)));
+  const notifiedVisitIds = new Set(existing.filter(notification => notification.notificationType === "OVERDUE_VISIT").map(notification => notification.visitId));
+  for (const alert of overdue) {
+    if (notifiedVisitIds.has(alert.visitId)) continue;
+    const visit = scopedVisits.find(candidate => candidate.id === alert.visitId);
+    if (!visit) continue;
+    await db.insert(managerNotifications).values({
+      clinicId: visit.clinicId,
+      managerUserId,
+      visitId: alert.visitId,
+      notificationType: "OVERDUE_VISIT",
+      title: `زيارة متأخرة: ${alert.reference}`,
+      message: `تجاوزت الزيارة مهلة المتابعة بمدة ${alert.minutesLate} دقيقة.`,
+    });
+  }
+  return db.select().from(managerNotifications).where(and(eq(managerNotifications.managerUserId, managerUserId), inArray(managerNotifications.clinicId, clinicIds))).orderBy(desc(managerNotifications.createdAt)).limit(30);
+}
+
+export async function acknowledgeManagerNotification(managerUserId: number, notificationId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const notification = (await db.select().from(managerNotifications).where(and(eq(managerNotifications.id, notificationId), eq(managerNotifications.managerUserId, managerUserId))).limit(1))[0];
+  if (!notification) return undefined;
+  const membership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, notification.clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
+  if (!membership) return undefined;
+  const acknowledgedAt = new Date();
+  await db.update(managerNotifications).set({ acknowledgedAt }).where(eq(managerNotifications.id, notificationId));
+  return { ...notification, acknowledgedAt };
 }
 
 export async function listAssignedVisitsForUser(userId: number) {

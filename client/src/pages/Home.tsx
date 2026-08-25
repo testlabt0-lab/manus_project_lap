@@ -32,12 +32,13 @@ import {
   WalletCards,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ManagerNotificationCenter } from "./ManagerNotificationCenter";
 import { canReadPatientVisitOutput, nextVisitState, progressForVisit, visitStateMeta, type VisitState } from "../../../shared/medicare";
 import { DEMO_VISIT } from "../../../shared/mockData";
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/MediCare_Pro_Overdue_Alerts_Source_af43f9de.zip";
+const PACKAGE_URL = "/manus-storage/MediCare_Pro_Manager_Notifications_Source_45572df3.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";
@@ -77,7 +78,7 @@ function TopBar({ path, navigate, role, setRole }: { path: string; navigate: (to
       <button className={`nav-item ${path === "/flow" || path === "/docs" ? "active" : ""}`} onClick={() => navigate("/flow")}>مركز المعرفة</button>
     </nav>
     <div className="flex items-center gap-2">
-      <button className="outline-btn hidden sm:inline-flex" aria-label="الإشعارات" onClick={() => toast.info("لديك تحديث واحد على الزيارة")}> <Bell size={16} /> </button>
+      <button className={`outline-btn hidden sm:inline-flex ${path === "/notifications" ? "border-[#0b776b] text-[#0b776b]" : ""}`} aria-label="مركز الإشعارات" onClick={() => navigate("/notifications")}> <Bell size={16} /> </button>
       <select className="role-chip" aria-label="تبديل الدور التجريبي" value={role} onChange={e => { const next = e.target.value as Role; setRole(next); navigate(next === "patient" ? "/" : next === "manager" ? "/operations" : "/team"); }}>
         <option value="patient">عرض المريض</option><option value="manager">مدير العيادة</option><option value="staff">الفريق الطبي</option>
       </select>
@@ -195,6 +196,7 @@ function LiveOperationsManager({ navigate }: { navigate: (to: string) => void })
   const managedStaff = trpc.memberships.listManagedStaff.useQuery(undefined, { enabled: canManage });
   const [alertGraceMinutes, setAlertGraceMinutes] = useState(30);
   const overdueAlerts = trpc.alerts.listOverdue.useQuery({ graceMinutes: alertGraceMinutes }, { enabled: canManage });
+  const notifications = trpc.notifications.listMine.useQuery(undefined, { enabled: canManage });
   const [auditEventType, setAuditEventType] = useState<"ALL" | "VISIT_ASSIGNED" | "VISIT_STATE_CHANGED" | "STAFF_MEMBERSHIP_STATUS_CHANGED">("ALL");
   const [auditPeriod, setAuditPeriod] = useState<"ALL" | "DAY" | "WEEK" | "MONTH">("ALL");
   const [auditSearch, setAuditSearch] = useState("");
@@ -224,6 +226,10 @@ function LiveOperationsManager({ navigate }: { navigate: (to: string) => void })
   const transition = trpc.visits.transition.useMutation({
     onSuccess: () => { toast.success("تم تحديث حالة الزيارة من الخادم."); utils.visits.listOperations.invalidate(); utils.audit.listOperations.invalidate(); utils.alerts.listOverdue.invalidate(); },
     onError: () => toast.error("رفض الخادم انتقال الحالة لأنه غير مسموح أو لأن المورد غير متاح."),
+  });
+  const acknowledgeNotification = trpc.notifications.acknowledge.useMutation({
+    onSuccess: () => { toast.success("تم تأكيد الاطلاع على الإشعار."); utils.notifications.listMine.invalidate(); },
+    onError: () => toast.error("تعذر تأكيد الإشعار. تحقق من نطاق العيادة."),
   });
   const downloadAuditCsv = async () => {
     try {
@@ -291,6 +297,7 @@ export default function Home() {
   const invoiceVisitId = /^\/invoice\/(\d+)$/.exec(path)?.[1];
   const page = useMemo(() => {
     if (path === "/book") return <BookingPage navigate={navigate}/>;
+    if (path === "/notifications") return <ManagerNotificationCenter navigate={navigate}/>;
     if (path.startsWith("/visit/")) return <VisitDetails navigate={navigate} visitState={visitState} setVisitState={setVisitState} visitId={liveVisitId ? Number(liveVisitId) : undefined}/>;
     if (path === "/visits") return <VisitsPage navigate={navigate} visitState={visitState}/>;
     if (path === "/team/report" || reportEditorVisitId) return <ReportComposerPage navigate={navigate} initialVisitId={reportEditorVisitId ? Number(reportEditorVisitId) : undefined}/>;

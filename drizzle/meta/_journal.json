@@ -43,6 +43,20 @@
       "when": 1787600362248,
       "tag": "0005_certain_nuke",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787601746129,
+      "tag": "0006_sour_centennial",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787668159221,
+      "tag": "0007_cold_titanium_man",
+      "breakpoints": true
     }
   ]
 }

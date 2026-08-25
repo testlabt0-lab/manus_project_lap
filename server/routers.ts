@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, finalizeReport, getInvoiceForPatient, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedStaffMemberships, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, transitionVisit } from "./db";
+import { acknowledgeManagerNotification, assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, finalizeReport, getInvoiceForPatient, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedStaffMemberships, listManagerNotifications, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, transitionVisit } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -84,6 +84,14 @@ export const appRouter = router({
     listOverdue: adminProcedure.input(z.object({ graceMinutes: z.number().int().min(0).max(1440).default(30) }).optional()).query(async ({ ctx, input }) => {
       const visits = await listOperationalVisits(ctx.user.id);
       return getOverdueVisitAlerts(visits, input?.graceMinutes ?? 30);
+    }),
+  }),
+  notifications: router({
+    listMine: adminProcedure.query(({ ctx }) => listManagerNotifications(ctx.user.id)),
+    acknowledge: adminProcedure.input(z.object({ notificationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const notification = await acknowledgeManagerNotification(ctx.user.id, input.notificationId);
+      if (!notification) throw new TRPCError({ code: "FORBIDDEN", message: "Notification cannot be acknowledged by this user" });
+      return notification;
     }),
   }),
   outputs: router({

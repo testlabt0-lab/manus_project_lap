@@ -4,6 +4,7 @@ import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
+import { completeMobileAuthorization } from "../mobileAuth";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
@@ -55,6 +56,18 @@ export function registerOAuthRoutes(app: Express) {
 
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+      const user = await db.getUserByOpenId(userInfo.openId);
+      if (user) {
+        const mobileAuthorization = await completeMobileAuthorization({ nonce, userId: user.id });
+        if (mobileAuthorization) {
+          const appRedirectUrl = new URL(mobileAuthorization.appRedirectUri);
+          appRedirectUrl.searchParams.set("code", mobileAuthorization.authorizationCode);
+          appRedirectUrl.searchParams.set("state", mobileAuthorization.appState);
+          res.redirect(302, appRedirectUrl.toString());
+          return;
+        }
+      }
 
       res.redirect(302, "/");
     } catch (error) {
