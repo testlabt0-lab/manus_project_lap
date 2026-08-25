@@ -148,6 +148,12 @@ export async function getManagerNotificationResponseReport(managerUserId: number
   return buildNotificationResponseReport(notifications, days);
 }
 
+export async function exportManagerNotificationResponseCsv(managerUserId: number, days = 30) {
+  const report = await getManagerNotificationResponseReport(managerUserId, days);
+  const rows = [["الفترة بالأيام", "إجمالي الإشعارات", "غير المؤكدة", "المؤكدة", "نسبة التأكيد", "متوسط الاستجابة بالدقائق"], [days, report.total, report.pending, report.acknowledged, `${report.acknowledgementRate}%`, report.averageResponseMinutes ?? ""]];
+  return { filename: `medicare-notification-response-${days}d-${new Date().toISOString().slice(0, 10)}.csv`, content: `\ufeff${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}` };
+}
+
 export async function acknowledgeManagerNotification(managerUserId: number, notificationId: number) {
   const db = await getDb();
   if (!db) return undefined;

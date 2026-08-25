@@ -3,7 +3,7 @@ import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { filterManagerNotifications, sortManagerNotifications, type ManagerNotificationFilter, type ManagerNotificationSort } from "./managerNotificationFilter";
 
 export function ManagerNotificationCenter({ navigate }: { navigate: (to: string) => void }) {
@@ -12,9 +12,23 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const notifications = trpc.notifications.listMine.useQuery(undefined, { enabled: isAuthenticated });
   const [reportDays, setReportDays] = useState<7 | 30 | 90>(30);
   const responseReport = trpc.notifications.responseReport.useQuery({ days: reportDays }, { enabled: isAuthenticated });
+  const responseExport = trpc.notifications.exportResponseCsv.useQuery({ days: reportDays }, { enabled: false });
   const [filter, setFilter] = useState<ManagerNotificationFilter>("ALL");
   const [sort, setSort] = useState<ManagerNotificationSort>("PENDING_FIRST");
   const refreshManagerData = () => { utils.notifications.listMine.invalidate(); utils.notifications.responseReport.invalidate(); utils.audit.listOperations.invalidate(); };
+  const downloadResponseCsv = async () => {
+    const result = await responseExport.refetch();
+    if (!result.data) return toast.error("تعذر إعداد ملف مؤشرات الاستجابة.");
+    const url = URL.createObjectURL(new Blob([result.data.content], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = url; link.download = result.data.filename; link.click(); URL.revokeObjectURL(url);
+  };
+  useEffect(() => {
+    let button: HTMLButtonElement | undefined;
+    const timer = window.setTimeout(() => {
+      button = document.createElement("button"); button.className = "outline-btn fixed bottom-5 left-5 z-50 bg-white shadow-lg"; button.type = "button"; button.textContent = responseExport.isFetching ? "جارٍ إعداد CSV…" : "تنزيل مؤشرات CSV"; button.disabled = responseExport.isFetching; button.onclick = downloadResponseCsv; document.body.append(button);
+    }, 0);
+    return () => { window.clearTimeout(timer); button?.remove(); };
+  }, [reportDays, responseExport.isFetching]);
   const acknowledge = trpc.notifications.acknowledge.useMutation({ onSuccess: () => { toast.success("تم تأكيد الاطلاع على الإشعار وسُجل الحدث تشغيلياً."); refreshManagerData(); }, onError: () => toast.error("تعذر تأكيد الإشعار ضمن نطاق العيادة.") });
   const acknowledgeAll = trpc.notifications.acknowledgeAll.useMutation({ onSuccess: ({ acknowledgedCount }) => { toast.success(acknowledgedCount ? `تم تأكيد ${acknowledgedCount} إشعاراً وسُجلت الأحداث تشغيلياً.` : "لا توجد إشعارات غير مؤكدة حالياً."); refreshManagerData(); }, onError: () => toast.error("تعذر تأكيد الإشعارات ضمن نطاق العيادة.") });
   const allNotifications = notifications.data ?? [];
