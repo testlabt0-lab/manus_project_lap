@@ -5,6 +5,7 @@ import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { buildVisitCreatedNotification, buildVisitStatusNotification } from "./patientNotificationPolicy";
+import { buildNotificationResponseReport } from "./notificationResponsePolicy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -143,22 +144,8 @@ export async function listManagerNotifications(managerUserId: number) {
 }
 
 export async function getManagerNotificationResponseReport(managerUserId: number, days = 30) {
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const notifications = (await listManagerNotifications(managerUserId)).filter(notification => new Date(notification.createdAt) >= cutoff);
-  const acknowledged = notifications.filter(notification => notification.acknowledgedAt);
-  const totalResponseMinutes = acknowledged.reduce((sum, notification) => {
-    const respondedAt = new Date(notification.acknowledgedAt!).getTime();
-    const createdAt = new Date(notification.createdAt).getTime();
-    return sum + Math.max(0, Math.round((respondedAt - createdAt) / 60_000));
-  }, 0);
-  const pending = notifications.length - acknowledged.length;
-  return {
-    total: notifications.length,
-    pending,
-    acknowledged: acknowledged.length,
-    acknowledgementRate: notifications.length === 0 ? 0 : Math.round((acknowledged.length / notifications.length) * 100),
-    averageResponseMinutes: acknowledged.length === 0 ? null : Math.round(totalResponseMinutes / acknowledged.length),
-  };
+  const notifications = await listManagerNotifications(managerUserId);
+  return buildNotificationResponseReport(notifications, days);
 }
 
 export async function acknowledgeManagerNotification(managerUserId: number, notificationId: number) {
