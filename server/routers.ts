@@ -89,7 +89,7 @@ export const appRouter = router({
   }),
   notifications: router({
     listMine: adminProcedure.query(({ ctx }) => listManagerNotifications(ctx.user.id)),
-    responseReport: adminProcedure.query(({ ctx }) => getManagerNotificationResponseReport(ctx.user.id)),
+    responseReport: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) }).optional()).query(({ ctx, input }) => getManagerNotificationResponseReport(ctx.user.id, input?.days ?? 30)),
     acknowledge: adminProcedure.input(z.object({ notificationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const notification = await acknowledgeManagerNotification(ctx.user.id, input.notificationId);
       if (!notification) throw new TRPCError({ code: "FORBIDDEN", message: "Notification cannot be acknowledged by this user" });

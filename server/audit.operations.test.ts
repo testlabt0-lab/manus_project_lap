@@ -88,7 +88,14 @@ describe("audit operations", () => {
     mocks.getManagerNotificationResponseReport.mockResolvedValue(report);
     const caller = appRouter.createCaller(context("admin"));
     await expect(caller.notifications.responseReport()).resolves.toEqual(report);
-    expect(mocks.getManagerNotificationResponseReport).toHaveBeenCalledWith(71);
+    expect(mocks.getManagerNotificationResponseReport).toHaveBeenCalledWith(71, 30);
+  });
+
+  it("passes an allowed report period to the manager-scoped response report", async () => {
+    mocks.getManagerNotificationResponseReport.mockResolvedValue({ total: 1, pending: 1, acknowledged: 0, acknowledgementRate: 0, averageResponseMinutes: null });
+    const caller = appRouter.createCaller(context("admin"));
+    await caller.notifications.responseReport({ days: 7 });
+    expect(mocks.getManagerNotificationResponseReport).toHaveBeenCalledWith(71, 7);
   });
 
   it("rejects response metrics for a non-administrator", async () => {

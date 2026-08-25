@@ -142,8 +142,9 @@ export async function listManagerNotifications(managerUserId: number) {
   return db.select().from(managerNotifications).where(and(eq(managerNotifications.managerUserId, managerUserId), inArray(managerNotifications.clinicId, clinicIds))).orderBy(desc(managerNotifications.createdAt)).limit(30);
 }
 
-export async function getManagerNotificationResponseReport(managerUserId: number) {
-  const notifications = await listManagerNotifications(managerUserId);
+export async function getManagerNotificationResponseReport(managerUserId: number, days = 30) {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const notifications = (await listManagerNotifications(managerUserId)).filter(notification => new Date(notification.createdAt) >= cutoff);
   const acknowledged = notifications.filter(notification => notification.acknowledgedAt);
   const totalResponseMinutes = acknowledged.reduce((sum, notification) => {
     const respondedAt = new Date(notification.acknowledgedAt!).getTime();
