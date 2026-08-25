@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 export const MOBILE_ACCESS_TOKEN_TTL_MS = 1000 * 60 * 15;
 export const MOBILE_AUTH_TTL_MS = 1000 * 60 * 5;
+export const MOBILE_REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 export const MOBILE_REDIRECT_URI = "medicarepro://auth";
 export const MOBILE_CLIENT_ID = "medicare-pro-mobile-android";
 
@@ -38,6 +39,10 @@ export function createMobileNonce() {
 
 export function createMobileAuthorizationCode() {
   return randomBytes(32).toString("base64url");
+}
+
+export function createMobileRefreshToken() {
+  return randomBytes(48).toString("base64url");
 }
 
 export function isExpectedMobileWebOrigin(candidate: unknown, expectedOrigin: string) {

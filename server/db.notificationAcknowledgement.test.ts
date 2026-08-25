@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("drizzle-orm/mysql2", () => ({ drizzle: () => mocks.db }));
 
-import { acknowledgeManagerNotification } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification } from "./db";
 
 function selectRows(rows: unknown[]) {
   const chain = {
@@ -56,6 +56,34 @@ describe("database notification acknowledgement audit", () => {
       .mockReturnValueOnce(selectRows([{ userId: 71, clinicId: 3, memberRole: "MANAGER", status: "ACTIVE" }]));
 
     await expect(acknowledgeManagerNotification(71, 45)).resolves.toMatchObject({ id: 45, acknowledgedAt });
+    expect(mocks.db.transaction).not.toHaveBeenCalled();
+    expect(mocks.auditInsertValues).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges only pending notifications in bulk and writes one audit event per notification", async () => {
+    const acknowledgedAt = new Date("2026-08-25T12:00:00.000Z");
+    mocks.db.select
+      .mockReturnValueOnce(selectRows([{ userId: 71, clinicId: 3, memberRole: "MANAGER", status: "ACTIVE" }]))
+      .mockReturnValueOnce(selectRows([{ id: 45, clinicId: 3, managerUserId: 71, acknowledgedAt: null }, { id: 46, clinicId: 3, managerUserId: 71, acknowledgedAt: null }, { id: 47, clinicId: 3, managerUserId: 71, acknowledgedAt }]))
+      .mockReturnValueOnce(selectRows([{ id: 45, clinicId: 3, managerUserId: 71, acknowledgedAt: null }]))
+      .mockReturnValueOnce(selectRows([{ userId: 71, clinicId: 3, memberRole: "MANAGER", status: "ACTIVE" }]))
+      .mockReturnValueOnce(selectRows([{ id: 46, clinicId: 3, managerUserId: 71, acknowledgedAt: null }]))
+      .mockReturnValueOnce(selectRows([{ userId: 71, clinicId: 3, memberRole: "MANAGER", status: "ACTIVE" }]));
+
+    await expect(acknowledgeAllManagerNotifications(71)).resolves.toEqual({ acknowledgedCount: 2 });
+    expect(mocks.db.transaction).toHaveBeenCalledTimes(2);
+    expect(mocks.auditInsertValues).toHaveBeenCalledTimes(2);
+    expect(mocks.auditInsertValues).toHaveBeenNthCalledWith(1, expect.objectContaining({ eventType: "NOTIFICATION_ACKNOWLEDGED", resourceId: 45 }));
+    expect(mocks.auditInsertValues).toHaveBeenNthCalledWith(2, expect.objectContaining({ eventType: "NOTIFICATION_ACKNOWLEDGED", resourceId: 46 }));
+  });
+
+  it("does not repeat bulk audit writes when all notifications were already acknowledged", async () => {
+    const acknowledgedAt = new Date("2026-08-25T12:00:00.000Z");
+    mocks.db.select
+      .mockReturnValueOnce(selectRows([{ userId: 71, clinicId: 3, memberRole: "MANAGER", status: "ACTIVE" }]))
+      .mockReturnValueOnce(selectRows([{ id: 45, clinicId: 3, managerUserId: 71, acknowledgedAt }]));
+
+    await expect(acknowledgeAllManagerNotifications(71)).resolves.toEqual({ acknowledgedCount: 0 });
     expect(mocks.db.transaction).not.toHaveBeenCalled();
     expect(mocks.auditInsertValues).not.toHaveBeenCalled();
   });

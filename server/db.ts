@@ -1,9 +1,10 @@
 import { and, desc, eq, gte, inArray, like, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotifications, medicalReports, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotifications, medicalReports, patientNotifications, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
+import { buildVisitCreatedNotification, buildVisitStatusNotification } from "./patientNotificationPolicy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -164,6 +165,22 @@ export async function acknowledgeManagerNotification(managerUserId: number, noti
   return { ...notification, acknowledgedAt };
 }
 
+export async function acknowledgeAllManagerNotifications(managerUserId: number) {
+  const db = await getDb();
+  if (!db) return { acknowledgedCount: 0 };
+  const managerMemberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
+  const clinicIds = managerMemberships.map(membership => membership.clinicId);
+  if (clinicIds.length === 0) return undefined;
+  const notifications = await db.select().from(managerNotifications).where(and(eq(managerNotifications.managerUserId, managerUserId), inArray(managerNotifications.clinicId, clinicIds)));
+  const pendingNotificationIds = notifications.filter(notification => !notification.acknowledgedAt).map(notification => notification.id);
+  let acknowledgedCount = 0;
+  for (const notificationId of pendingNotificationIds) {
+    const acknowledged = await acknowledgeManagerNotification(managerUserId, notificationId);
+    if (acknowledged?.acknowledgedAt) acknowledgedCount += 1;
+  }
+  return { acknowledgedCount };
+}
+
 export async function listAssignedVisitsForUser(userId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -302,7 +319,11 @@ export async function createVisitForPatient(input: {
   const reference = `V-${Date.now().toString().slice(-8)}`;
   await db.insert(visits).values({ ...input, reference, state: "REQUESTED" });
   const result = await db.select().from(visits).where(eq(visits.reference, reference)).limit(1);
-  return result[0];
+  const visit = result[0];
+  if (visit) {
+    await db.insert(patientNotifications).values({ userId: visit.patientId, visitId: visit.id, ...buildVisitCreatedNotification() });
+  }
+  return visit;
 }
 
 export async function assignVisit(input: { visitId: number; assignedByUserId: number; assigneeLabel: string; assigneeUserId?: number }) {
@@ -344,7 +365,11 @@ export async function transitionVisit(input: { visitId: number; changedByUserId:
       await tx.insert(invoices).values({ visitId: input.visitId, invoiceNo: `INV-${current.reference.replace("V-", "")}`, totalHalalas: 27000, status: "DUE" });
     }
   });
-  return (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
+  const visit = (await db.select().from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
+  if (visit) {
+    await db.insert(patientNotifications).values({ userId: visit.patientId, visitId: visit.id, ...buildVisitStatusNotification(visit.state) });
+  }
+  return visit;
 }
 
 export async function getReportForPatient(visitId: number, patientId: number) {

@@ -2,12 +2,13 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { acknowledgeManagerNotification, assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, finalizeReport, getInvoiceForPatient, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedStaffMemberships, listManagerNotifications, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, transitionVisit } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, finalizeReport, getDb, getInvoiceForPatient, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedStaffMemberships, listManagerNotifications, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, transitionVisit } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { isAllowedVisitTransition } from "./visitPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
+import { createPatientNotification, listPatientNotifications, markPatientNotificationRead } from "./patientNotificationDb";
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -92,6 +93,24 @@ export const appRouter = router({
       const notification = await acknowledgeManagerNotification(ctx.user.id, input.notificationId);
       if (!notification) throw new TRPCError({ code: "FORBIDDEN", message: "Notification cannot be acknowledged by this user" });
       return notification;
+    }),
+    acknowledgeAll: adminProcedure.mutation(async ({ ctx }) => {
+      const result = await acknowledgeAllManagerNotifications(ctx.user.id);
+      if (!result) throw new TRPCError({ code: "FORBIDDEN", message: "Notifications cannot be acknowledged by this user" });
+      return result;
+    }),
+  }),
+  patientNotifications: router({
+    listMine: protectedProcedure.query(async ({ ctx }) => {
+      const database = await getDb();
+      return database ? listPatientNotifications(database, ctx.user.id) : [];
+    }),
+    markRead: protectedProcedure.input(z.object({ notificationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const database = await getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const updated = await markPatientNotificationRead(database, { userId: ctx.user.id, notificationId: input.notificationId });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND" });
+      return { success: true };
     }),
   }),
   outputs: router({

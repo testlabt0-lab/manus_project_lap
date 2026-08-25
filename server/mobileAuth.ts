@@ -5,15 +5,20 @@ import {
   authorizeMobileAuthSession,
   consumeMobileAuthSession,
   createMobileAuthSession,
+  createMobileRefreshToken,
+  getActiveMobileRefreshToken,
   getAuthorizedMobileAuthSession,
   getMobileAuthUser,
   getPendingMobileAuthSession,
+  rotateMobileRefreshToken,
 } from "./mobileAuthDb";
 import {
   MOBILE_ACCESS_TOKEN_TTL_MS,
   MOBILE_AUTH_TTL_MS,
   MOBILE_CLIENT_ID,
+  MOBILE_REFRESH_TOKEN_TTL_MS,
   createMobileAuthorizationCode,
+  createMobileRefreshToken as createRefreshToken,
   createMobileNonce,
   isExpectedMobileWebOrigin,
   isValidMobileClientId,
@@ -27,12 +32,14 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { sdk } from "./_core/sdk";
 
+type MobileDb = NonNullable<Awaited<ReturnType<typeof db.getDb>>>;
+
 function getQuery(req: Request, key: string) {
   const value = req.query[key];
   return typeof value === "string" ? value : undefined;
 }
 
-function getDbOrThrow() {
+function getDbOrThrow(): Promise<MobileDb> {
   return db.getDb().then(database => {
     if (!database) throw new Error("Database is not available");
     return database;
@@ -41,6 +48,27 @@ function getDbOrThrow() {
 
 function isConfigured() {
   return Boolean(ENV.mobileWebOrigin && ENV.oAuthPortalUrl && ENV.appId);
+}
+
+async function issueMobileTokens(user: { id: number; openId: string; name: string | null }, database: MobileDb) {
+  const accessToken = await sdk.createSessionToken(user.openId, {
+    name: user.name || "MediCare Pro Mobile",
+    expiresInMs: MOBILE_ACCESS_TOKEN_TTL_MS,
+    scope: "mobile_patient",
+  });
+  const refreshToken = createRefreshToken();
+  await createMobileRefreshToken(database, {
+    tokenHash: sha256Hex(refreshToken),
+    userId: user.id,
+    clientId: MOBILE_CLIENT_ID,
+    expiresAt: new Date(Date.now() + MOBILE_REFRESH_TOKEN_TTL_MS),
+  });
+  return {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    token_type: "Bearer",
+    expires_in: Math.floor(MOBILE_ACCESS_TOKEN_TTL_MS / 1000),
+  };
 }
 
 export function registerMobileAuthRoutes(app: Express) {
@@ -112,16 +140,44 @@ export function registerMobileAuthRoutes(app: Express) {
         res.status(401).json({ error: "User is not available" });
         return;
       }
-      const accessToken = await sdk.createSessionToken(user.openId, {
-        name: user.name || "MediCare Pro Mobile",
-        expiresInMs: MOBILE_ACCESS_TOKEN_TTL_MS,
-        scope: "mobile_patient",
-      });
       res.setHeader("Cache-Control", "no-store");
-      res.json({ access_token: accessToken, token_type: "Bearer", expires_in: Math.floor(MOBILE_ACCESS_TOKEN_TTL_MS / 1000) });
+      res.json(await issueMobileTokens(user, database));
     } catch (error) {
       console.error("[MobileAuth] Unable to exchange mobile authorization code", error);
       res.status(500).json({ error: "Unable to exchange mobile authorization code" });
+    }
+  });
+
+  app.post("/api/mobile-auth/refresh", async (req: Request, res: Response) => {
+    const clientId = req.body?.client_id;
+    const refreshToken = req.body?.refresh_token;
+    if (!isValidMobileClientId(clientId) || typeof refreshToken !== "string" || refreshToken.length < 32) {
+      res.status(400).json({ error: "Invalid refresh token request" });
+      return;
+    }
+    try {
+      const database = await getDbOrThrow();
+      const tokenHash = sha256Hex(refreshToken);
+      const existing = await getActiveMobileRefreshToken(database, { tokenHash, clientId });
+      if (!existing) {
+        res.status(400).json({ error: "Refresh token is invalid or expired" });
+        return;
+      }
+      const rotated = await rotateMobileRefreshToken(database, { tokenHash, clientId });
+      if (!rotated) {
+        res.status(400).json({ error: "Refresh token has already been used" });
+        return;
+      }
+      const user = await getMobileAuthUser(database, existing.userId);
+      if (!user) {
+        res.status(401).json({ error: "User is not available" });
+        return;
+      }
+      res.setHeader("Cache-Control", "no-store");
+      res.json(await issueMobileTokens(user, database));
+    } catch (error) {
+      console.error("[MobileAuth] Unable to refresh mobile session", error);
+      res.status(500).json({ error: "Unable to refresh mobile session" });
     }
   });
 }

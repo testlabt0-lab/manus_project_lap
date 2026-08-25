@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "4a1da6e7-1e41-44eb-9bf3-a2eaa6e4e191",
-  "prevId": "1837d210-e0cd-45c6-b9bc-d567068c2547",
+  "id": "ed89d37e-5556-4310-9d0c-8592c25d04a2",
+  "prevId": "4a1da6e7-1e41-44eb-9bf3-a2eaa6e4e191",
   "tables": {
     "audit_events": {
       "name": "audit_events",
@@ -30,7 +30,7 @@
         },
         "eventType": {
           "name": "eventType",
-          "type": "enum('VISIT_ASSIGNED','VISIT_STATE_CHANGED','STAFF_MEMBERSHIP_STATUS_CHANGED')",
+          "type": "enum('VISIT_ASSIGNED','VISIT_STATE_CHANGED','STAFF_MEMBERSHIP_STATUS_CHANGED','NOTIFICATION_ACKNOWLEDGED')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false

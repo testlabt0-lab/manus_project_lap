@@ -157,5 +157,34 @@ export const mobileAuthSessions = mysqlTable("mobile_auth_sessions", {
   index("mobile_auth_sessions_expiry_idx").on(table.expiresAt),
 ]);
 
+export const mobileRefreshTokens = mysqlTable("mobile_refresh_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  userId: int("userId").notNull(),
+  clientId: varchar("clientId", { length: 80 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  rotatedAt: timestamp("rotatedAt"),
+  revokedAt: timestamp("revokedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("mobile_refresh_tokens_user_expiry_idx").on(table.userId, table.expiresAt),
+]);
+
+export const patientNotificationKinds = ["VISIT_CREATED", "VISIT_STATUS_CHANGED"] as const;
+
+export const patientNotifications = mysqlTable("patient_notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  visitId: int("visitId"),
+  kind: mysqlEnum("kind", patientNotificationKinds).notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  body: varchar("body", { length: 255 }).notNull(),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("patient_notifications_user_created_idx").on(table.userId, table.createdAt),
+  index("patient_notifications_user_read_idx").on(table.userId, table.readAt),
+]);
+
 export type Visit = typeof visits.$inferSelect;
 export type VisitState = (typeof visitStates)[number];

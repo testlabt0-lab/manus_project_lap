@@ -42,4 +42,16 @@ describe("mobile authorization routes", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: "Invalid authorization code exchange" });
   });
+
+  it("rejects an unregistered Android client before processing a refresh token", async () => {
+    const origin = await startTestServer();
+    const response = await fetch(`${origin}/api/mobile-auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_id: "untrusted-client", refresh_token: "A".repeat(48) }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Invalid refresh token request" });
+  });
 });
