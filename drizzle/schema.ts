@@ -115,11 +115,12 @@ export const managerNotifications = mysqlTable("manager_notifications", {
 export const managerNotificationPreferences = mysqlTable("manager_notification_preferences", {
   id: int("id").autoincrement().primaryKey(),
   managerUserId: int("managerUserId").notNull(),
+  clinicId: int("clinicId").notNull().default(1),
   minimumAcknowledgementRate: int("minimumAcknowledgementRate").notNull().default(70),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [
-  uniqueIndex("manager_notification_preferences_manager_unique").on(table.managerUserId),
+  uniqueIndex("manager_notification_preferences_manager_clinic_unique").on(table.managerUserId, table.clinicId),
 ]);
 
 export const medicalReports = mysqlTable("medical_reports", {

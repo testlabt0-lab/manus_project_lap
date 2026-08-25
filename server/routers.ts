@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedStaffMemberships, listManagerNotifications, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -89,12 +89,21 @@ export const appRouter = router({
   }),
   notifications: router({
     listMine: adminProcedure.query(({ ctx }) => listManagerNotifications(ctx.user.id)),
-    responseReport: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) }).optional()).query(({ ctx, input }) => getManagerNotificationResponseReport(ctx.user.id, input?.days ?? 30)),
-    responseComparison: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) })).query(({ ctx, input }) => getManagerNotificationResponseComparison(ctx.user.id, input.days)),
-    responseTrend: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) })).query(({ ctx, input }) => getManagerNotificationResponseTrend(ctx.user.id, input.days)),
-    responseThresholdAlert: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]), minimumAcknowledgementRate: z.number().int().min(0).max(100) })).query(({ ctx, input }) => getManagerNotificationResponseThresholdAlert(ctx.user.id, input.days, input.minimumAcknowledgementRate)),
-    getResponsePreference: adminProcedure.query(({ ctx }) => getManagerNotificationResponsePreference(ctx.user.id)),
-    setResponsePreference: adminProcedure.input(z.object({ minimumAcknowledgementRate: z.union([z.literal(50), z.literal(60), z.literal(70), z.literal(80), z.literal(90)]) })).mutation(({ ctx, input }) => setManagerNotificationResponsePreference(ctx.user.id, input.minimumAcknowledgementRate)),
+    managedClinics: adminProcedure.query(({ ctx }) => listManagedNotificationClinics(ctx.user.id)),
+    responseReport: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30), clinicId: z.number().int().positive().optional() }).optional()).query(({ ctx, input }) => getManagerNotificationResponseReport(ctx.user.id, input?.days ?? 30, input?.clinicId)),
+    responseComparison: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30), clinicId: z.number().int().positive().optional() })).query(({ ctx, input }) => getManagerNotificationResponseComparison(ctx.user.id, input.days, input.clinicId)),
+    responseTrend: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30), clinicId: z.number().int().positive().optional() })).query(({ ctx, input }) => getManagerNotificationResponseTrend(ctx.user.id, input.days, input.clinicId)),
+    responseThresholdAlert: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]), minimumAcknowledgementRate: z.number().int().min(0).max(100), clinicId: z.number().int().positive().optional() })).query(({ ctx, input }) => getManagerNotificationResponseThresholdAlert(ctx.user.id, input.days, input.minimumAcknowledgementRate, input.clinicId)),
+    getResponsePreference: adminProcedure.input(z.object({ clinicId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const preference = await getManagerNotificationResponsePreference(ctx.user.id, input.clinicId);
+      if (!preference) throw new TRPCError({ code: "FORBIDDEN", message: "Clinic preference cannot be read by this user" });
+      return preference;
+    }),
+    setResponsePreference: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), minimumAcknowledgementRate: z.union([z.literal(50), z.literal(60), z.literal(70), z.literal(80), z.literal(90)]) })).mutation(async ({ ctx, input }) => {
+      const preference = await setManagerNotificationResponsePreference(ctx.user.id, input.clinicId, input.minimumAcknowledgementRate);
+      if (!preference) throw new TRPCError({ code: "FORBIDDEN", message: "Clinic preference cannot be updated by this user" });
+      return preference;
+    }),
     exportResponseCsv: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) })).query(({ ctx, input }) => exportManagerNotificationResponseCsv(ctx.user.id, input.days)),
     exportResponseTrendCsv: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) })).query(({ ctx, input }) => exportManagerNotificationResponseTrendCsv(ctx.user.id, input.days)),
     acknowledge: adminProcedure.input(z.object({ notificationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {

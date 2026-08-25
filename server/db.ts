@@ -117,15 +117,24 @@ export async function listOperationalVisits(userId: number) {
   return db.select().from(visits).where(inArray(visits.clinicId, clinicIds)).orderBy(desc(visits.scheduledStart));
 }
 
-export async function listManagerNotifications(managerUserId: number) {
+export async function listManagedNotificationClinics(managerUserId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const memberships = await db.select({ clinicId: clinicMemberships.clinicId, clinicName: clinicMemberships.clinicName }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
+  return Array.from(new Map(memberships.map(membership => [membership.clinicId, membership])).values());
+}
+
+export async function listManagerNotifications(managerUserId: number, clinicId?: number) {
   const db = await getDb();
   if (!db) return [];
   const managerMemberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
   const clinicIds = managerMemberships.map(membership => membership.clinicId);
   if (clinicIds.length === 0) return [];
-  const scopedVisits = await db.select().from(visits).where(inArray(visits.clinicId, clinicIds)).orderBy(desc(visits.scheduledStart));
+  const scopedClinicIds = clinicId === undefined ? clinicIds : clinicIds.includes(clinicId) ? [clinicId] : [];
+  if (scopedClinicIds.length === 0) return [];
+  const scopedVisits = await db.select().from(visits).where(inArray(visits.clinicId, scopedClinicIds)).orderBy(desc(visits.scheduledStart));
   const overdue = getOverdueVisitAlerts(scopedVisits, 30);
-  const existing = await db.select().from(managerNotifications).where(and(eq(managerNotifications.managerUserId, managerUserId), inArray(managerNotifications.clinicId, clinicIds)));
+  const existing = await db.select().from(managerNotifications).where(and(eq(managerNotifications.managerUserId, managerUserId), inArray(managerNotifications.clinicId, scopedClinicIds)));
   const notifiedVisitIds = new Set(existing.filter(notification => notification.notificationType === "OVERDUE_VISIT").map(notification => notification.visitId));
   for (const alert of overdue) {
     if (notifiedVisitIds.has(alert.visitId)) continue;
@@ -140,37 +149,41 @@ export async function listManagerNotifications(managerUserId: number) {
       message: `تجاوزت الزيارة مهلة المتابعة بمدة ${alert.minutesLate} دقيقة.`,
     });
   }
-  return db.select().from(managerNotifications).where(and(eq(managerNotifications.managerUserId, managerUserId), inArray(managerNotifications.clinicId, clinicIds))).orderBy(desc(managerNotifications.createdAt)).limit(30);
+  return db.select().from(managerNotifications).where(and(eq(managerNotifications.managerUserId, managerUserId), inArray(managerNotifications.clinicId, scopedClinicIds))).orderBy(desc(managerNotifications.createdAt)).limit(30);
 }
 
-export async function getManagerNotificationResponseReport(managerUserId: number, days = 30) {
-  const notifications = await listManagerNotifications(managerUserId);
+export async function getManagerNotificationResponseReport(managerUserId: number, days = 30, clinicId?: number) {
+  const notifications = await listManagerNotifications(managerUserId, clinicId);
   return buildNotificationResponseReport(notifications, days);
 }
 
-export async function getManagerNotificationResponseComparison(managerUserId: number, days = 30) {
-  return buildNotificationResponseComparison(await listManagerNotifications(managerUserId), days);
+export async function getManagerNotificationResponseComparison(managerUserId: number, days = 30, clinicId?: number) {
+  return buildNotificationResponseComparison(await listManagerNotifications(managerUserId, clinicId), days);
 }
 
-export async function getManagerNotificationResponseTrend(managerUserId: number, days = 30) {
-  return buildNotificationResponseTrend(await listManagerNotifications(managerUserId), days);
+export async function getManagerNotificationResponseTrend(managerUserId: number, days = 30, clinicId?: number) {
+  return buildNotificationResponseTrend(await listManagerNotifications(managerUserId, clinicId), days);
 }
 
-export async function getManagerNotificationResponseThresholdAlert(managerUserId: number, days = 30, minimumAcknowledgementRate = 70) {
-  return buildNotificationResponseThresholdAlert(await listManagerNotifications(managerUserId), days, minimumAcknowledgementRate);
+export async function getManagerNotificationResponseThresholdAlert(managerUserId: number, days = 30, minimumAcknowledgementRate = 70, clinicId?: number) {
+  return buildNotificationResponseThresholdAlert(await listManagerNotifications(managerUserId, clinicId), days, minimumAcknowledgementRate);
 }
 
-export async function getManagerNotificationResponsePreference(managerUserId: number) {
+export async function getManagerNotificationResponsePreference(managerUserId: number, clinicId: number) {
   const db = await getDb();
-  if (!db) return { minimumAcknowledgementRate: 70 };
-  const [preference] = await db.select({ minimumAcknowledgementRate: managerNotificationPreferences.minimumAcknowledgementRate }).from(managerNotificationPreferences).where(eq(managerNotificationPreferences.managerUserId, managerUserId)).limit(1);
+  if (!db) return undefined;
+  const [membership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  if (!membership) return undefined;
+  const [preference] = await db.select({ minimumAcknowledgementRate: managerNotificationPreferences.minimumAcknowledgementRate }).from(managerNotificationPreferences).where(and(eq(managerNotificationPreferences.managerUserId, managerUserId), eq(managerNotificationPreferences.clinicId, clinicId))).limit(1);
   return { minimumAcknowledgementRate: preference?.minimumAcknowledgementRate ?? 70 };
 }
 
-export async function setManagerNotificationResponsePreference(managerUserId: number, minimumAcknowledgementRate: 50 | 60 | 70 | 80 | 90) {
+export async function setManagerNotificationResponsePreference(managerUserId: number, clinicId: number, minimumAcknowledgementRate: 50 | 60 | 70 | 80 | 90) {
   const db = await getDb();
-  if (!db) throw new Error("Database unavailable");
-  await db.insert(managerNotificationPreferences).values({ managerUserId, minimumAcknowledgementRate }).onDuplicateKeyUpdate({ set: { minimumAcknowledgementRate, updatedAt: new Date() } });
+  if (!db) return undefined;
+  const [membership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  if (!membership) return undefined;
+  await db.insert(managerNotificationPreferences).values({ managerUserId, clinicId, minimumAcknowledgementRate }).onDuplicateKeyUpdate({ set: { minimumAcknowledgementRate, updatedAt: new Date() } });
   return { minimumAcknowledgementRate };
 }
 

@@ -31,16 +31,22 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const utils = trpc.useUtils();
   const notifications = trpc.notifications.listMine.useQuery(undefined, { enabled: isAuthenticated });
   const [reportDays, setReportDays] = useState<7 | 30 | 90>(30);
-  const report = trpc.notifications.responseReport.useQuery({ days: reportDays }, { enabled: isAuthenticated });
-  const comparison = trpc.notifications.responseComparison.useQuery({ days: reportDays }, { enabled: isAuthenticated });
-  const trend = trpc.notifications.responseTrend.useQuery({ days: reportDays }, { enabled: isAuthenticated });
+  const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
+  const managedClinics = trpc.notifications.managedClinics.useQuery(undefined, { enabled: isAuthenticated });
+  const report = trpc.notifications.responseReport.useQuery({ days: reportDays, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
+  const comparison = trpc.notifications.responseComparison.useQuery({ days: reportDays, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
+  const trend = trpc.notifications.responseTrend.useQuery({ days: reportDays, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
   const csv = trpc.notifications.exportResponseCsv.useQuery({ days: reportDays }, { enabled: false });
   const trendCsv = trpc.notifications.exportResponseTrendCsv.useQuery({ days: reportDays }, { enabled: false });
   const [minimumAcknowledgementRate, setMinimumAcknowledgementRate] = useState<50 | 60 | 70 | 80 | 90>(70);
-  const responsePreference = trpc.notifications.getResponsePreference.useQuery(undefined, { enabled: isAuthenticated });
-  const thresholdAlert = trpc.notifications.responseThresholdAlert.useQuery({ days: reportDays, minimumAcknowledgementRate }, { enabled: isAuthenticated });
+  const responsePreference = trpc.notifications.getResponsePreference.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
+  const thresholdAlert = trpc.notifications.responseThresholdAlert.useQuery({ days: reportDays, minimumAcknowledgementRate, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
   const [filter, setFilter] = useState<ManagerNotificationFilter>("ALL");
   const [sort, setSort] = useState<ManagerNotificationSort>("PENDING_FIRST");
+
+  useEffect(() => {
+    if (selectedClinicId === null && managedClinics.data?.[0]) setSelectedClinicId(managedClinics.data[0].clinicId);
+  }, [managedClinics.data, selectedClinicId]);
 
   useEffect(() => {
     const savedRate = responsePreference.data?.minimumAcknowledgementRate;
@@ -50,9 +56,10 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const refresh = () => {
     utils.notifications.listMine.invalidate();
     utils.notifications.responseReport.invalidate();
-    utils.notifications.responseComparison.invalidate();
-    utils.notifications.responseTrend.invalidate();
-    utils.notifications.responseThresholdAlert.invalidate();
+      utils.notifications.responseComparison.invalidate();
+      utils.notifications.responseTrend.invalidate();
+      utils.notifications.responseThresholdAlert.invalidate();
+      utils.notifications.managedClinics.invalidate();
     utils.audit.listOperations.invalidate();
   };
 
@@ -135,7 +142,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
           <h2 id="response-threshold-title" className="section-title">تنبيه عتبة التأكيد</h2>
           <p className="section-copy">تقييم تشغيلي وصفي لنسبة التأكيد في آخر {reportDays} يوماً، دون إرسال تنبيه خارج التطبيق. {responsePreference.isLoading ? "جارٍ استرجاع الإعداد المحفوظ…" : ""}</p>
         </div>
-        <div className="flex flex-wrap items-end gap-2"><label className="field-label text-xs">الحد الأدنى للتأكيد<select className="field-input mt-1 min-w-28" value={minimumAcknowledgementRate} onChange={event => setMinimumAcknowledgementRate(Number(event.target.value) as 50 | 60 | 70 | 80 | 90)}><option value={50}>50%</option><option value={60}>60%</option><option value={70}>70%</option><option value={80}>80%</option><option value={90}>90%</option></select></label><button className="outline-btn" disabled={!hasUnsavedThreshold || saveResponsePreference.isPending || responsePreference.isLoading} onClick={() => saveResponsePreference.mutate({ minimumAcknowledgementRate })}>{saveResponsePreference.isPending ? "جارٍ الحفظ…" : "حفظ العتبة"}</button></div>
+        <div className="flex flex-wrap items-end gap-2"><label className="field-label text-xs">العيادة<select className="field-input mt-1 min-w-36" value={selectedClinicId ?? ""} disabled={managedClinics.isLoading || !managedClinics.data?.length} onChange={event => setSelectedClinicId(Number(event.target.value))}>{managedClinics.isLoading && <option value="">جارٍ التحميل…</option>}{managedClinics.data?.map(clinic => <option key={clinic.clinicId} value={clinic.clinicId}>{clinic.clinicName}</option>)}</select></label><label className="field-label text-xs">الحد الأدنى للتأكيد<select className="field-input mt-1 min-w-28" value={minimumAcknowledgementRate} onChange={event => setMinimumAcknowledgementRate(Number(event.target.value) as 50 | 60 | 70 | 80 | 90)}><option value={50}>50%</option><option value={60}>60%</option><option value={70}>70%</option><option value={80}>80%</option><option value={90}>90%</option></select></label><button className="outline-btn" disabled={selectedClinicId === null || !hasUnsavedThreshold || saveResponsePreference.isPending || responsePreference.isLoading} onClick={() => selectedClinicId !== null && saveResponsePreference.mutate({ clinicId: selectedClinicId, minimumAcknowledgementRate })}>{saveResponsePreference.isPending ? "جارٍ الحفظ…" : "حفظ العتبة"}</button></div>
       </div>
       {thresholdAlert.isLoading && <p className="py-5 text-sm text-[#6f887f]">جارٍ تقييم عتبة التأكيد…</p>}
       {thresholdAlert.isError && <p className="mt-4 rounded-2xl bg-[#fff5e9] p-4 text-sm text-[#9a5e16]">تعذر تقييم العتبة الآن. تبقى المؤشرات والتقارير الأخرى متاحة.</p>}
