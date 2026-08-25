@@ -104,8 +104,8 @@ export const appRouter = router({
       if (!preference) throw new TRPCError({ code: "FORBIDDEN", message: "Clinic preference cannot be updated by this user" });
       return preference;
     }),
-    exportResponseCsv: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) })).query(({ ctx, input }) => exportManagerNotificationResponseCsv(ctx.user.id, input.days)),
-    exportResponseTrendCsv: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) })).query(({ ctx, input }) => exportManagerNotificationResponseTrendCsv(ctx.user.id, input.days)),
+    exportResponseCsv: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30), clinicId: z.number().int().positive().optional() })).query(({ ctx, input }) => exportManagerNotificationResponseCsv(ctx.user.id, input.days, input.clinicId)),
+    exportResponseTrendCsv: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30), clinicId: z.number().int().positive().optional() })).query(({ ctx, input }) => exportManagerNotificationResponseTrendCsv(ctx.user.id, input.days, input.clinicId)),
     acknowledge: adminProcedure.input(z.object({ notificationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const notification = await acknowledgeManagerNotification(ctx.user.id, input.notificationId);
       if (!notification) throw new TRPCError({ code: "FORBIDDEN", message: "Notification cannot be acknowledged by this user" });

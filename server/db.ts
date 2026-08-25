@@ -187,16 +187,18 @@ export async function setManagerNotificationResponsePreference(managerUserId: nu
   return { minimumAcknowledgementRate };
 }
 
-export async function exportManagerNotificationResponseCsv(managerUserId: number, days = 30) {
-  const report = await getManagerNotificationResponseReport(managerUserId, days);
+export async function exportManagerNotificationResponseCsv(managerUserId: number, days = 30, clinicId?: number) {
+  const report = await getManagerNotificationResponseReport(managerUserId, days, clinicId);
   const rows = [["الفترة بالأيام", "إجمالي الإشعارات", "غير المؤكدة", "المؤكدة", "نسبة التأكيد", "متوسط الاستجابة بالدقائق"], [days, report.total, report.pending, report.acknowledged, `${report.acknowledgementRate}%`, report.averageResponseMinutes ?? ""]];
-  return { filename: `medicare-notification-response-${days}d-${new Date().toISOString().slice(0, 10)}.csv`, content: `\ufeff${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}` };
+  const clinicSuffix = clinicId ? `-clinic-${clinicId}` : "";
+  return { filename: `medicare-notification-response${clinicSuffix}-${days}d-${new Date().toISOString().slice(0, 10)}.csv`, content: `\ufeff${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}` };
 }
 
-export async function exportManagerNotificationResponseTrendCsv(managerUserId: number, days = 30) {
-  const trend = await getManagerNotificationResponseTrend(managerUserId, days);
+export async function exportManagerNotificationResponseTrendCsv(managerUserId: number, days = 30, clinicId?: number) {
+  const trend = await getManagerNotificationResponseTrend(managerUserId, days, clinicId);
   const rows = [["التاريخ UTC", "إجمالي الإشعارات", "غير المؤكدة", "المؤكدة", "نسبة التأكيد"], ...trend.map(point => [point.date, point.total, point.pending, point.acknowledged, `${point.acknowledgementRate}%`])];
-  return { filename: `medicare-notification-response-trend-${days}d-${new Date().toISOString().slice(0, 10)}.csv`, content: `\ufeff${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}` };
+  const clinicSuffix = clinicId ? `-clinic-${clinicId}` : "";
+  return { filename: `medicare-notification-response-trend${clinicSuffix}-${days}d-${new Date().toISOString().slice(0, 10)}.csv`, content: `\ufeff${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}` };
 }
 
 export async function acknowledgeManagerNotification(managerUserId: number, notificationId: number) {

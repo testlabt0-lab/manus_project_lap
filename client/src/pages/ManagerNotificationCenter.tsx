@@ -36,8 +36,8 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const report = trpc.notifications.responseReport.useQuery({ days: reportDays, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
   const comparison = trpc.notifications.responseComparison.useQuery({ days: reportDays, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
   const trend = trpc.notifications.responseTrend.useQuery({ days: reportDays, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
-  const csv = trpc.notifications.exportResponseCsv.useQuery({ days: reportDays }, { enabled: false });
-  const trendCsv = trpc.notifications.exportResponseTrendCsv.useQuery({ days: reportDays }, { enabled: false });
+  const csv = trpc.notifications.exportResponseCsv.useQuery({ days: reportDays, clinicId: selectedClinicId ?? undefined }, { enabled: false });
+  const trendCsv = trpc.notifications.exportResponseTrendCsv.useQuery({ days: reportDays, clinicId: selectedClinicId ?? undefined }, { enabled: false });
   const [minimumAcknowledgementRate, setMinimumAcknowledgementRate] = useState<50 | 60 | 70 | 80 | 90>(70);
   const responsePreference = trpc.notifications.getResponsePreference.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
   const thresholdAlert = trpc.notifications.responseThresholdAlert.useQuery({ days: reportDays, minimumAcknowledgementRate, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
@@ -193,7 +193,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
           <h2 id="response-trend-title" className="section-title">اتجاه الاستجابة اليومي</h2>
           <p className="section-copy">نسبة التأكيد لكل يوم من آخر {reportDays} يوماً؛ تُعرض الأيام بالتوقيت العالمي UTC لتوحيد التجميع.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2"><span className="badge">اتجاه {reportDays} يوماً</span><button className="outline-btn" disabled={trendCsv.isFetching} onClick={downloadTrendCsv}>{trendCsv.isFetching ? "جارٍ إعداد CSV…" : "تنزيل CSV للاتجاه"}</button></div>
+        <div className="flex flex-wrap items-center gap-2"><span className="badge">اتجاه {reportDays} يوماً</span><button className="outline-btn" disabled={trendCsv.isFetching || selectedClinicId === null} onClick={downloadTrendCsv}>{trendCsv.isFetching ? "جارٍ إعداد CSV…" : "تنزيل CSV للعيادة"}</button></div>
       </div>
 
       {trend.isLoading && <p className="py-5 text-sm text-[#6f887f]">جارٍ إعداد الاتجاه اليومي…</p>}

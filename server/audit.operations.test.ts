@@ -138,15 +138,15 @@ describe("audit operations", () => {
   it("exports response metrics as CSV for the requested report period", async () => {
     mocks.exportManagerNotificationResponseCsv.mockResolvedValue({ filename: "medicare-notification-response-7d.csv", content: "\ufeff\"الفترة بالأيام\"" });
     const caller = appRouter.createCaller(context("admin"));
-    await expect(caller.notifications.exportResponseCsv({ days: 7 })).resolves.toMatchObject({ filename: "medicare-notification-response-7d.csv" });
-    expect(mocks.exportManagerNotificationResponseCsv).toHaveBeenCalledWith(71, 7);
+    await expect(caller.notifications.exportResponseCsv({ days: 7, clinicId: 2 })).resolves.toMatchObject({ filename: "medicare-notification-response-7d.csv" });
+    expect(mocks.exportManagerNotificationResponseCsv).toHaveBeenCalledWith(71, 7, 2);
   });
 
   it("exports daily response trend rows as CSV for the current manager", async () => {
     mocks.exportManagerNotificationResponseTrendCsv.mockResolvedValue({ filename: "medicare-notification-response-trend-7d.csv", content: "\ufeff\"التاريخ UTC\"" });
     const caller = appRouter.createCaller(context("admin"));
-    await expect(caller.notifications.exportResponseTrendCsv({ days: 7 })).resolves.toMatchObject({ filename: "medicare-notification-response-trend-7d.csv" });
-    expect(mocks.exportManagerNotificationResponseTrendCsv).toHaveBeenCalledWith(71, 7);
+    await expect(caller.notifications.exportResponseTrendCsv({ days: 7, clinicId: 2 })).resolves.toMatchObject({ filename: "medicare-notification-response-trend-7d.csv" });
+    expect(mocks.exportManagerNotificationResponseTrendCsv).toHaveBeenCalledWith(71, 7, 2);
   });
 
   it("rejects response metrics for a non-administrator", async () => {
