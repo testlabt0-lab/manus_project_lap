@@ -39,7 +39,7 @@ import { DEMO_VISIT } from "../../../shared/mockData";
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/MediCare_Pro_Bulk_Ack_Final_Source_9fc0786a.zip";
+const PACKAGE_URL = "/manus-storage/MediCare_Pro_Notification_Filter_Source_eea20470.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";
