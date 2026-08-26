@@ -42,6 +42,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const responsePreference = trpc.notifications.getResponsePreference.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
   const thresholdLastChange = trpc.notifications.thresholdLastChange.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
   const thresholdChangeHistory = trpc.notifications.thresholdChangeHistory.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
+  const analyticsSnapshots = trpc.notifications.analyticsSnapshotHistory.useQuery({ clinicId: selectedClinicId ?? 1, limit: 5 }, { enabled: isAuthenticated && selectedClinicId !== null });
   const thresholdAlert = trpc.notifications.responseThresholdAlert.useQuery({ days: reportDays, minimumAcknowledgementRate, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
   const [filter, setFilter] = useState<ManagerNotificationFilter>("ALL");
   const [sort, setSort] = useState<ManagerNotificationSort>("PENDING_FIRST");
@@ -91,6 +92,13 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
     },
     onError: () => toast.error("تعذر حفظ عتبة التأكيد."),
   });
+  const captureAnalyticsSnapshot = trpc.notifications.captureAnalyticsSnapshot.useMutation({
+    onSuccess: snapshot => {
+      toast.success(`تم حفظ لقطة ${snapshot.periodDays} يوماً لعيادة ${snapshot.clinicName}.`);
+      utils.notifications.analyticsSnapshotHistory.invalidate();
+    },
+    onError: () => toast.error("تعذر حفظ اللقطة التحليلية. تحقق من عيادة المدير المختارة."),
+  });
   const downloadCsv = async () => {
     const result = await csv.refetch();
     if (!result.data) return toast.error("تعذر إعداد ملف CSV.");
@@ -139,6 +147,17 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
       <div className="metric-card"><span className="metric-label">نسبة التأكيد</span><span className="metric-value">{report.data?.acknowledgementRate ?? 0}%</span></div>
       <div className="metric-card"><span className="metric-label">متوسط الاستجابة</span><span className="metric-value">{report.data?.averageResponseMinutes ?? "—"}</span></div>
       <div className="metric-card"><span className="metric-label">نتائج المرشح</span><span className="metric-value">{items.length}</span></div>
+    </section>
+
+    <section className="panel mt-5" aria-labelledby="analytics-snapshot-title">
+      <div className="section-head">
+        <div><h2 id="analytics-snapshot-title" className="section-title">لقطات المؤشرات التاريخية</h2><p className="section-copy">يلتقط المدير يدوياً مؤشرات الفترة الحالية للعيادة المختارة للاحتفاظ بها كمرجع تشغيلي، دون مهمة دورية أو إشعار خارجي.</p></div>
+        <button className="outline-btn" disabled={selectedClinicId === null || captureAnalyticsSnapshot.isPending || report.isLoading} onClick={() => selectedClinicId !== null && captureAnalyticsSnapshot.mutate({ clinicId: selectedClinicId, days: reportDays })}>{captureAnalyticsSnapshot.isPending ? "جارٍ الحفظ…" : `حفظ لقطة ${reportDays} يوماً`}</button>
+      </div>
+      {analyticsSnapshots.isLoading && <p className="py-4 text-sm text-[#6b867e]">جارٍ تحميل اللقطات المحفوظة…</p>}
+      {analyticsSnapshots.isError && <p className="mt-4 rounded-2xl bg-[#fff5e9] p-4 text-sm text-[#9a5e16]">تعذر تحميل اللقطات التاريخية لهذه العيادة.</p>}
+      {!analyticsSnapshots.isLoading && !analyticsSnapshots.isError && analyticsSnapshots.data?.length === 0 && <p className="mt-4 rounded-2xl bg-[#f5faf8] p-5 text-sm text-[#6b867e]">لا توجد لقطات محفوظة بعد. احفظ أول لقطة للاحتفاظ بمؤشرات الفترة المختارة.</p>}
+      {!analyticsSnapshots.isLoading && (analyticsSnapshots.data?.length ?? 0) > 0 && <div className="mt-4 overflow-x-auto rounded-xl border border-[#dce9e4]"><table className="w-full min-w-[680px] text-right text-xs"><thead className="bg-[#f5faf8] text-[#527169]"><tr><th className="px-3 py-2 font-semibold">العيادة</th><th className="px-3 py-2 font-semibold">الفترة</th><th className="px-3 py-2 font-semibold">الإجمالي</th><th className="px-3 py-2 font-semibold">المؤكدة</th><th className="px-3 py-2 font-semibold">نسبة التأكيد</th><th className="px-3 py-2 font-semibold">وقت الحفظ</th></tr></thead><tbody>{analyticsSnapshots.data?.map(snapshot => <tr key={snapshot.id} className="border-t border-[#e7f0ec]"><td className="px-3 py-2 text-[#31584f]">{snapshot.clinicName}</td><td className="px-3 py-2 text-[#527169]">{snapshot.periodDays} يوماً</td><td className="px-3 py-2 text-[#527169]">{snapshot.total}</td><td className="px-3 py-2 text-[#527169]">{snapshot.acknowledged}</td><td className="px-3 py-2 font-semibold text-[#31584f]">{snapshot.acknowledgementRate}%</td><td className="px-3 py-2 text-[#527169]">{new Date(snapshot.capturedAt).toLocaleString("ar-SA")}</td></tr>)}</tbody></table></div>}
     </section>
 
     <section className="panel mt-5" aria-labelledby="response-threshold-title">

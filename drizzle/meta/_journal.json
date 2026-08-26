@@ -92,6 +92,13 @@
       "when": 1787678312189,
       "tag": "0012_striped_tigra",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1787737828839,
+      "tag": "0013_black_living_lightning",
+      "breakpoints": true
     }
   ]
 }

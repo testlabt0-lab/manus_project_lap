@@ -123,6 +123,21 @@ export const managerNotificationPreferences = mysqlTable("manager_notification_p
   uniqueIndex("manager_notification_preferences_manager_clinic_unique").on(table.managerUserId, table.clinicId),
 ]);
 
+export const managerNotificationAnalyticsSnapshots = mysqlTable("manager_notification_analytics_snapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  managerUserId: int("managerUserId").notNull(),
+  clinicId: int("clinicId").notNull(),
+  periodDays: int("periodDays").notNull(),
+  total: int("total").notNull(),
+  pending: int("pending").notNull(),
+  acknowledged: int("acknowledged").notNull(),
+  acknowledgementRate: int("acknowledgementRate").notNull(),
+  averageResponseMinutes: int("averageResponseMinutes"),
+  capturedAt: timestamp("capturedAt").defaultNow().notNull(),
+}, table => [
+  index("manager_notification_snapshots_manager_clinic_captured_idx").on(table.managerUserId, table.clinicId, table.capturedAt),
+]);
+
 export const medicalReports = mysqlTable("medical_reports", {
   id: int("id").autoincrement().primaryKey(),
   visitId: int("visitId").notNull().unique(),

@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, captureManagerNotificationAnalyticsSnapshot, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -95,6 +95,16 @@ export const appRouter = router({
   notifications: router({
     listMine: adminProcedure.query(({ ctx }) => listManagerNotifications(ctx.user.id)),
     managedClinics: adminProcedure.query(({ ctx }) => listManagedNotificationClinics(ctx.user.id)),
+    analyticsSnapshotHistory: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), limit: z.number().int().min(1).max(10).default(5) })).query(async ({ ctx, input }) => {
+      const snapshots = await listManagerNotificationAnalyticsSnapshots(ctx.user.id, input.clinicId, input.limit);
+      if (!snapshots) throw new TRPCError({ code: "FORBIDDEN", message: "Analytics snapshots cannot be read for this clinic" });
+      return snapshots;
+    }),
+    captureAnalyticsSnapshot: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), days: z.union([z.literal(7), z.literal(30), z.literal(90)]) })).mutation(async ({ ctx, input }) => {
+      const snapshot = await captureManagerNotificationAnalyticsSnapshot(ctx.user.id, input.clinicId, input.days);
+      if (!snapshot) throw new TRPCError({ code: "FORBIDDEN", message: "Analytics snapshot cannot be captured for this clinic" });
+      return snapshot;
+    }),
     responseReport: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30), clinicId: z.number().int().positive().optional() }).optional()).query(({ ctx, input }) => getManagerNotificationResponseReport(ctx.user.id, input?.days ?? 30, input?.clinicId)),
     responseComparison: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30), clinicId: z.number().int().positive().optional() })).query(({ ctx, input }) => getManagerNotificationResponseComparison(ctx.user.id, input.days, input.clinicId)),
     responseTrend: adminProcedure.input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30), clinicId: z.number().int().positive().optional() })).query(({ ctx, input }) => getManagerNotificationResponseTrend(ctx.user.id, input.days, input.clinicId)),

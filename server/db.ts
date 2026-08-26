@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, like, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
@@ -155,6 +155,33 @@ export async function listManagerNotifications(managerUserId: number, clinicId?:
 export async function getManagerNotificationResponseReport(managerUserId: number, days = 30, clinicId?: number) {
   const notifications = await listManagerNotifications(managerUserId, clinicId);
   return buildNotificationResponseReport(notifications, days);
+}
+
+async function getActiveManagerClinicMembership(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [membership] = await db.select({ clinicId: clinicMemberships.clinicId, clinicName: clinicMemberships.clinicName }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  return membership;
+}
+
+export async function captureManagerNotificationAnalyticsSnapshot(managerUserId: number, clinicId: number, days: 7 | 30 | 90) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const membership = await getActiveManagerClinicMembership(managerUserId, clinicId);
+  if (!membership) return undefined;
+  const report = await getManagerNotificationResponseReport(managerUserId, days, clinicId);
+  const capturedAt = new Date();
+  await db.insert(managerNotificationAnalyticsSnapshots).values({ managerUserId, clinicId, periodDays: days, total: report.total, pending: report.pending, acknowledged: report.acknowledged, acknowledgementRate: report.acknowledgementRate, averageResponseMinutes: report.averageResponseMinutes, capturedAt });
+  return { clinicId, clinicName: membership.clinicName, periodDays: days, ...report, capturedAt };
+}
+
+export async function listManagerNotificationAnalyticsSnapshots(managerUserId: number, clinicId: number, limit = 5) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const membership = await getActiveManagerClinicMembership(managerUserId, clinicId);
+  if (!membership) return undefined;
+  const snapshots = await db.select().from(managerNotificationAnalyticsSnapshots).where(and(eq(managerNotificationAnalyticsSnapshots.managerUserId, managerUserId), eq(managerNotificationAnalyticsSnapshots.clinicId, clinicId))).orderBy(desc(managerNotificationAnalyticsSnapshots.capturedAt)).limit(limit);
+  return snapshots.map(snapshot => ({ ...snapshot, clinicName: membership.clinicName }));
 }
 
 export async function getManagerNotificationResponseComparison(managerUserId: number, days = 30, clinicId?: number) {
