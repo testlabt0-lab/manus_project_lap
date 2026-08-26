@@ -188,6 +188,7 @@ export async function setStaffServiceSkills(managerUserId: number, clinicId: num
   await db.transaction(async tx => {
     await tx.delete(staffServiceSkills).where(and(eq(staffServiceSkills.clinicId, clinicId), eq(staffServiceSkills.staffUserId, staffUserId)));
     if (uniqueSkills.length) await tx.insert(staffServiceSkills).values(uniqueSkills.map(skillCode => ({ clinicId, staffUserId, skillCode, updatedByUserId: managerUserId })));
+    await tx.insert(auditEvents).values({ clinicId, actorUserId: managerUserId, eventType: "STAFF_SKILLS_UPDATED", resourceType: "STAFF_SKILLS", resourceId: staffUserId, summary: `تم تحديث مهارات عضو الفريق (${uniqueSkills.length} مهارة).` });
   });
   return { clinicId, staffUserId, skillCodes: uniqueSkills };
 }
@@ -226,6 +227,7 @@ export async function setStaffServiceZones(managerUserId: number, clinicId: numb
   await db.transaction(async tx => {
     await tx.delete(staffServiceZones).where(and(eq(staffServiceZones.clinicId, clinicId), eq(staffServiceZones.staffUserId, staffUserId)));
     if (uniqueZones.length) await tx.insert(staffServiceZones).values(uniqueZones.map(zoneCode => ({ clinicId, staffUserId, zoneCode, updatedByUserId: managerUserId })));
+    await tx.insert(auditEvents).values({ clinicId, actorUserId: managerUserId, eventType: "STAFF_SERVICE_ZONES_UPDATED", resourceType: "STAFF_SERVICE_ZONES", resourceId: staffUserId, summary: `تم تحديث مناطق خدمة عضو الفريق (${uniqueZones.length} منطقة).` });
   });
   return { clinicId, staffUserId, zoneCodes: uniqueZones };
 }

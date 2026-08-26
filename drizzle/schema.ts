@@ -83,7 +83,7 @@ export const clinicMemberships = mysqlTable("clinic_memberships", {
   index("clinic_memberships_user_status_idx").on(table.userId, table.status),
 ]);
 
-export const auditEventTypes = ["VISIT_ASSIGNED", "VISIT_STATE_CHANGED", "STAFF_MEMBERSHIP_STATUS_CHANGED", "NOTIFICATION_ACKNOWLEDGED", "NOTIFICATION_THRESHOLD_CHANGED"] as const;
+export const auditEventTypes = ["VISIT_ASSIGNED", "VISIT_STATE_CHANGED", "STAFF_MEMBERSHIP_STATUS_CHANGED", "STAFF_SKILLS_UPDATED", "STAFF_SERVICE_ZONES_UPDATED", "NOTIFICATION_ACKNOWLEDGED", "NOTIFICATION_THRESHOLD_CHANGED"] as const;
 
 export const auditEvents = mysqlTable("audit_events", {
   id: int("id").autoincrement().primaryKey(),

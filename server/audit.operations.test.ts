@@ -344,4 +344,14 @@ describe("audit operations", () => {
     const caller = appRouter.createCaller(context("user"));
     await expect(caller.audit.listOperations()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("accepts staff skills and service zones audit event filters", async () => {
+    mocks.listAuditEventsForManager.mockClear();
+    mocks.listAuditEventsForManager.mockResolvedValue([]);
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.audit.listOperations({ eventType: "STAFF_SKILLS_UPDATED" })).resolves.toEqual([]);
+    await expect(caller.audit.listOperations({ eventType: "STAFF_SERVICE_ZONES_UPDATED" })).resolves.toEqual([]);
+    expect(mocks.listAuditEventsForManager).toHaveBeenNthCalledWith(1, 71, { eventType: "STAFF_SKILLS_UPDATED" });
+    expect(mocks.listAuditEventsForManager).toHaveBeenNthCalledWith(2, 71, { eventType: "STAFF_SERVICE_ZONES_UPDATED" });
+  });
 });
