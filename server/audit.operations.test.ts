@@ -40,6 +40,17 @@ describe("audit operations", () => {
     expect(mocks.exportAuditEventsCsvForManager).toHaveBeenCalledWith(71, filter);
   });
 
+  it("passes an inclusive custom date range with the selected clinic to audit rows and CSV export", async () => {
+    mocks.listAuditEventsForManager.mockResolvedValue([]);
+    mocks.exportAuditEventsCsvForManager.mockResolvedValue({ filename: "medicare-audit-2026-08-25.csv", content: "" });
+    const caller = appRouter.createCaller(context("admin"));
+    const filter = { clinicId: 2, from: new Date("2026-08-01T00:00:00.000Z"), to: new Date("2026-08-31T23:59:59.999Z") };
+    await expect(caller.audit.listOperations(filter)).resolves.toEqual([]);
+    await expect(caller.audit.exportCsv(filter)).resolves.toMatchObject({ filename: "medicare-audit-2026-08-25.csv" });
+    expect(mocks.listAuditEventsForManager).toHaveBeenCalledWith(71, filter);
+    expect(mocks.exportAuditEventsCsvForManager).toHaveBeenCalledWith(71, filter);
+  });
+
   it("accepts the notification acknowledgement event type in a manager-scoped audit filter", async () => {
     mocks.listAuditEventsForManager.mockResolvedValue([]);
     const caller = appRouter.createCaller(context("admin"));
