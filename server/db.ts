@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, inArray, like, lt, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, clinicVisitDurationSettings, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { staffWeeklyCapacitySettings } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { hasAvailabilityOverlap } from "./staffAvailabilityPolicy";
@@ -132,6 +133,29 @@ export async function listWeeklyAssignmentsForManager(managerUserId: number, cli
     return items;
   }, []);
   return { clinicId, clinicName: membership.clinicName, weekStart, rows, workloads: summarizeWeeklyWorkloads(workloadRows) };
+}
+
+export async function listStaffWeeklyCapacitySettings(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [managerMembership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  if (!managerMembership) return undefined;
+  const staffRows = await db.select({ staffUserId: clinicMemberships.userId, staffName: users.name, memberRole: clinicMemberships.memberRole }).from(clinicMemberships).innerJoin(users, eq(users.id, clinicMemberships.userId)).where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"])));
+  const settings = await db.select({ staffUserId: staffWeeklyCapacitySettings.staffUserId, targetActiveAssignments: staffWeeklyCapacitySettings.targetActiveAssignments }).from(staffWeeklyCapacitySettings).where(eq(staffWeeklyCapacitySettings.clinicId, clinicId));
+  const byStaffId = new Map(settings.map(setting => [setting.staffUserId, setting.targetActiveAssignments]));
+  return staffRows.map(staff => ({ ...staff, targetActiveAssignments: byStaffId.get(staff.staffUserId) ?? 5 }));
+}
+
+export async function setStaffWeeklyCapacitySetting(managerUserId: number, clinicId: number, staffUserId: number, targetActiveAssignments: number) {
+  if (!Number.isInteger(targetActiveAssignments) || targetActiveAssignments < 1 || targetActiveAssignments > 20) return undefined;
+  const db = await getDb();
+  if (!db) return undefined;
+  const [managerMembership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  if (!managerMembership) return undefined;
+  const [staffMembership] = await db.select({ userId: clinicMemberships.userId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, staffUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"]))).limit(1);
+  if (!staffMembership) return undefined;
+  await db.insert(staffWeeklyCapacitySettings).values({ clinicId, staffUserId, targetActiveAssignments, updatedByUserId: managerUserId }).onDuplicateKeyUpdate({ set: { targetActiveAssignments, updatedByUserId: managerUserId, updatedAt: new Date() } });
+  return { clinicId, staffUserId, targetActiveAssignments };
 }
 
 export async function listManagedNotificationClinics(managerUserId: number) {

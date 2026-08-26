@@ -164,6 +164,18 @@ export const clinicVisitDurationSettings = mysqlTable("clinic_visit_duration_set
   uniqueIndex("clinic_visit_duration_settings_clinic_unique").on(table.clinicId),
 ]);
 
+export const staffWeeklyCapacitySettings = mysqlTable("staff_weekly_capacity_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull(),
+  staffUserId: int("staffUserId").notNull(),
+  targetActiveAssignments: int("targetActiveAssignments").notNull().default(5),
+  updatedByUserId: int("updatedByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("staff_weekly_capacity_clinic_staff_unique").on(table.clinicId, table.staffUserId),
+]);
+
 export const medicalReports = mysqlTable("medical_reports", {
   id: int("id").autoincrement().primaryKey(),
   visitId: int("visitId").notNull().unique(),

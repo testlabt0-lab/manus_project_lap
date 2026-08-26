@@ -7,6 +7,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { isAllowedVisitTransition } from "./visitPolicy";
+import { listStaffWeeklyCapacitySettings, setStaffWeeklyCapacitySetting } from "./db";
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { createPatientNotification, listPatientNotifications, markPatientNotificationRead } from "./patientNotificationDb";
 
@@ -124,6 +125,18 @@ export const appRouter = router({
       const result = await listWeeklyAssignmentsForManager(ctx.user.id, input.clinicId, input.weekStart);
       if (!result) throw new TRPCError({ code: "FORBIDDEN", message: "Weekly assignments cannot be read for this clinic" });
       return result;
+    }),
+  }),
+  staffCapacity: router({
+    list: adminProcedure.input(z.object({ clinicId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const settings = await listStaffWeeklyCapacitySettings(ctx.user.id, input.clinicId);
+      if (!settings) throw new TRPCError({ code: "FORBIDDEN", message: "Weekly capacity cannot be read for this clinic" });
+      return settings;
+    }),
+    set: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), staffUserId: z.number().int().positive(), targetActiveAssignments: z.number().int().min(1).max(20) })).mutation(async ({ ctx, input }) => {
+      const setting = await setStaffWeeklyCapacitySetting(ctx.user.id, input.clinicId, input.staffUserId, input.targetActiveAssignments);
+      if (!setting) throw new TRPCError({ code: "FORBIDDEN", message: "Weekly capacity cannot be updated for this clinic or staff member" });
+      return setting;
     }),
   }),
   audit: router({
