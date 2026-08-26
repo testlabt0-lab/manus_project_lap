@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getVisitAssignmentAvailability: vi.fn().mockResolvedValue({ visitId: 14, clinicId: 1, visitReference: "V-000014", scheduledStart: new Date("2026-06-01T08:00:00.000Z"), durationMinutes: 60, status: "AVAILABLE" }),
   listAssignedVisitsForUser: vi.fn(),
   syncFieldAction: vi.fn(),
+  getFieldSyncMetricsForManager: vi.fn(),
 }));
 
 vi.mock("./db", () => ({
@@ -19,6 +20,7 @@ vi.mock("./db", () => ({
   listActiveMembershipsForUser: vi.fn(),
   listAssignedVisitsForUser: mocks.listAssignedVisitsForUser,
   syncFieldAction: mocks.syncFieldAction,
+  getFieldSyncMetricsForManager: mocks.getFieldSyncMetricsForManager,
   listOperationalVisits: vi.fn(),
   listStaffForOperationalClinics: vi.fn(),
   listVisitsForPatient: vi.fn(),
@@ -52,6 +54,7 @@ describe("visits mutations", () => {
     mocks.createVisitForPatient.mockReset();
     mocks.listAssignedVisitsForUser.mockReset();
     mocks.syncFieldAction.mockReset();
+    mocks.getFieldSyncMetricsForManager.mockReset();
   });
 
   it("creates a booking for the authenticated patient only", async () => {
@@ -95,6 +98,14 @@ describe("visits mutations", () => {
     const caller = appRouter.createCaller(context("user"));
     await expect(caller.visits.syncField({ actionId: "12-ARRIVED-1000", visitId: 12, actionType: "ARRIVED" })).resolves.toEqual(synced);
     expect(mocks.syncFieldAction).toHaveBeenCalledWith({ actionId: "12-ARRIVED-1000", visitId: 12, actionType: "ARRIVED", changedByUserId: 1 });
+  });
+
+  it("returns aggregated field metrics only to a manager in the requested clinic", async () => {
+    const metrics = { clinicId: 1, total: 3, last24Hours: 2, arrived: 1, inProgress: 1, completed: 1, sampledLimit: 500 };
+    mocks.getFieldSyncMetricsForManager.mockResolvedValue(metrics);
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.visits.fieldSyncMetrics({ clinicId: 1 })).resolves.toEqual(metrics);
+    expect(mocks.getFieldSyncMetricsForManager).toHaveBeenCalledWith(2, 1);
   });
 
   it("maps invalid field transitions to a conflict without leaking clinical details", async () => {

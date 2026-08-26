@@ -773,6 +773,23 @@ export async function syncFieldAction(input: { actionId: string; visitId: number
   return { actionId: input.actionId, status: "SYNCED" as const, appliedState: input.actionType };
 }
 
+export async function getFieldSyncMetricsForManager(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const membership = (await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
+  if (!membership) return undefined;
+  const receipts = await db.select({ appliedState: fieldSyncReceipts.appliedState, createdAt: fieldSyncReceipts.createdAt }).from(fieldSyncReceipts).innerJoin(visits, eq(fieldSyncReceipts.visitId, visits.id)).where(eq(visits.clinicId, clinicId)).limit(500);
+  const since = Date.now() - 24 * 60 * 60 * 1000;
+  return receipts.reduce((metrics, receipt) => {
+    metrics.total += 1;
+    if (receipt.createdAt.getTime() >= since) metrics.last24Hours += 1;
+    if (receipt.appliedState === "COMPLETED") metrics.completed += 1;
+    if (receipt.appliedState === "ARRIVED") metrics.arrived += 1;
+    if (receipt.appliedState === "IN_PROGRESS") metrics.inProgress += 1;
+    return metrics;
+  }, { clinicId, total: 0, last24Hours: 0, arrived: 0, inProgress: 0, completed: 0, sampledLimit: 500 });
+}
+
 export async function getReportForPatient(visitId: number, patientId: number) {
   const visit = await getVisitForPatient(visitId, patientId);
   if (!visit || visit.state !== "COMPLETED") return undefined;

@@ -44,7 +44,7 @@ import { createFieldSession, fieldSessionStorageKey, isFieldSessionActive, type 
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/medicare-pro-web-p3-device-session-final_65d510ca.zip";
+const PACKAGE_URL = "/manus-storage/medicare-pro-web-p3-field-monitor_c66cf4d9.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";
@@ -84,6 +84,7 @@ function TopBar({ path, navigate, role, setRole }: { path: string; navigate: (to
       <button className={`nav-item ${path === "/flow" || path === "/docs" ? "active" : ""}`} onClick={() => navigate("/flow")}>مركز المعرفة</button>
       <button className={`nav-item ${path === "/notification-audit" ? "active" : ""}`} onClick={() => navigate("/notification-audit")}>سجل التأكيدات</button>
       <button className={`nav-item ${path === "/field" ? "active" : ""}`} onClick={() => navigate("/field")}>المساحة الميدانية</button>
+      <button className={`nav-item ${path === "/field-monitor" ? "active" : ""}`} onClick={() => navigate("/field-monitor")}>مراقبة المزامنة</button>
     </nav>
     <div className="flex items-center gap-2">
       <button className={`outline-btn hidden sm:inline-flex ${path === "/notifications" ? "border-[#0b776b] text-[#0b776b]" : ""}`} aria-label="مركز الإشعارات" onClick={() => navigate("/notifications")}> <Bell size={16} /> </button>
@@ -330,6 +331,11 @@ function FlowPage({ navigate }: { navigate: (to: string) => void }) { const [act
 
 function DocsPage() { const docs = [{ id:"dfd", type:"DFD", title:"مخطط تدفق البيانات", desc:"المستوى التفصيلي للكيانات والعمليات ومخازن البيانات.", src:DFD_URL },{ id:"seq", type:"SEQUENCE", title:"مخطط تسلسل الزيارة", desc:"من الحجز حتى التقرير والفاتورة والإشعار.", src:SEQUENCE_URL },{ id:"erd", type:"ERD", title:"مخطط قاعدة البيانات", desc:"الكيانات والعلاقات المرتبطة بمسار المريض.", src:ERD_URL },{ id:"security", type:"SECURITY", title:"الأمن والصلاحيات", desc:"RBAC وJWT وRLS وسجل التدقيق.", src:"" },{ id:"test", type:"TESTING", title:"خطة اختبار UI/UX", desc:"حالات UI والوصول وتجربة المستخدم.", src:"" },{ id:"design", type:"DESIGN SYSTEM", title:"نظام التصميم", desc:"Tokens ومكتبة المكونات وقواعد الاستجابة.", src:"" }]; const [selected,setSelected] = useState(docs[0]); return <main className="shell page-wrap"><div className="page-header"><div><h1>مركز الوثائق</h1><p>المخططات والوثائق الهندسية التي تدعم المشروع في مكان واحد.</p></div><a className="primary-btn inline-flex items-center" href={PACKAGE_URL} download><Download className="ml-2" size={16}/> تنزيل حزمة المشروع</a></div><section className="doc-grid">{docs.map(doc => <button key={doc.id} className={`panel doc-card ${selected.id === doc.id ? "ring-2 ring-[#0b776b]/20" : ""}`} onClick={() => setSelected(doc)}><div className="doc-thumb">{doc.src ? <img src={doc.src} alt={`معاينة ${doc.title}`} /> : <FileText className="doc-thumb-icon" size={38}/>}</div><div className="doc-body"><span className="doc-type">{doc.type}</span><h3>{doc.title}</h3><p>{doc.desc}</p></div></button>)}</section><section className="panel preview-panel"><div className="section-head"><div><h2 className="section-title">معاينة: {selected.title}</h2><p className="section-copy">{selected.desc}</p></div><MoreHorizontal className="text-[#789188]"/></div>{selected.src ? <img className="preview-image" src={selected.src} alt={`المعاينة الكبيرة لـ ${selected.title}`} /> : <div className="rounded-2xl bg-[#f6faf8] p-9 text-center text-sm text-[#6b867d]"><FileText className="mx-auto mb-3 text-[#0b776b]" size={33}/><p>يتوفر هذا المستند ضمن حزمة المشروع المضغوطة.</p><a className="mt-4 inline-flex text-sm font-bold text-[#0b776b] underline" href={PACKAGE_URL} download>تنزيل الحزمة</a></div>}</section></main>; }
 
+function FieldSyncMonitorPage({ navigate }: { navigate: (to: string) => void }) {
+  const metrics = trpc.visits.fieldSyncMetrics.useQuery({ clinicId: 1 });
+  return <main className="shell page-wrap"><div className="page-header"><div><h1>مراقبة المزامنة</h1><p>مؤشرات مجمعة لعمليات الفريق الميداني ضمن العيادة التجريبية.</p></div><button className="outline-btn" onClick={() => navigate("/field")}>المساحة الميدانية</button></div>{metrics.isLoading ? <div className="panel text-center">جارٍ تحميل المؤشرات…</div> : metrics.error ? <div className="panel text-center text-[#8b4b37]">لا تتوفر المؤشرات لهذه الصلاحية أو العيادة.</div> : <><section className="metrics-grid"><div className="metric-card"><span className="metric-label">إجمالي الإيصالات</span><span className="metric-value">{metrics.data?.total ?? 0}</span></div><div className="metric-card"><span className="metric-label">آخر 24 ساعة</span><span className="metric-value">{metrics.data?.last24Hours ?? 0}</span></div><div className="metric-card"><span className="metric-label">وصل</span><span className="metric-value">{metrics.data?.arrived ?? 0}</span></div><div className="metric-card"><span className="metric-label">مكتمل</span><span className="metric-value">{metrics.data?.completed ?? 0}</span></div></section><section className="panel mt-5"><div className="section-head"><div><h2 className="section-title">نطاق البيانات</h2><p className="section-copy">تعرض هذه الصفحة أعداداً مجمعة فقط؛ لا تعرض معرفات الزيارات أو المستخدمين أو المرضى أو العناوين.</p></div><ShieldCheck className="text-[#0b776b]" size={22}/></div><div className="mt-4 rounded-2xl bg-[#f5faf8] p-4 text-sm text-[#527169]">العينة محدودة بآخر {metrics.data?.sampledLimit ?? 500} إيصال تشغيلي.</div></section></>}</main>;
+}
+
 function FieldMobilePage({ navigate }: { navigate: (to: string) => void }) {
   const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [session, setSession] = useState<FieldSessionLease | null>(() => { try { const saved = JSON.parse(window.localStorage.getItem(fieldSessionStorageKey) ?? "null"); return isFieldSessionActive(saved) ? saved : createFieldSession(); } catch { return createFieldSession(); } });
@@ -370,6 +376,7 @@ export default function Home() {
     if (path === "/notifications") return <ManagerNotificationCenter navigate={navigate}/>;
     if (path === "/availability") return <StaffAvailabilityPage navigate={navigate}/>;
     if (path === "/field") return <FieldMobilePage navigate={navigate}/>;
+    if (path === "/field-monitor") return <FieldSyncMonitorPage navigate={navigate}/>;
     if (path === "/notification-audit") return <NotificationAcknowledgementAudit navigate={navigate}/>;
     if (path.startsWith("/visit/")) return <VisitDetails navigate={navigate} visitState={visitState} setVisitState={setVisitState} visitId={liveVisitId ? Number(liveVisitId) : undefined}/>;
     if (path === "/visits") return <VisitsPage navigate={navigate} visitState={visitState}/>;
