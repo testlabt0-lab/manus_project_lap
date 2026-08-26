@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getClinicVisitDurationSetting, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setClinicVisitDurationSetting, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit, updateStaffAvailabilityWindow } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getClinicVisitDurationSetting, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, listWeeklyAssignmentsForManager, recordDemoPayment, setClinicVisitDurationSetting, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit, updateStaffAvailabilityWindow } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -117,6 +117,13 @@ export const appRouter = router({
       const setting = await setClinicVisitDurationSetting(ctx.user.id, input.clinicId, input.durationMinutes, input.transitionBufferMinutes);
       if (!setting) throw new TRPCError({ code: "FORBIDDEN", message: "Visit duration cannot be updated for this clinic" });
       return setting;
+    }),
+  }),
+  assignments: router({
+    weekly: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), weekStart: z.date() })).query(async ({ ctx, input }) => {
+      const result = await listWeeklyAssignmentsForManager(ctx.user.id, input.clinicId, input.weekStart);
+      if (!result) throw new TRPCError({ code: "FORBIDDEN", message: "Weekly assignments cannot be read for this clinic" });
+      return result;
     }),
   }),
   audit: router({

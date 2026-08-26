@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, like, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, lt, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, clinicVisitDurationSettings, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -117,6 +117,16 @@ export async function listOperationalVisits(userId: number) {
   const clinicIds = memberships.map(membership => membership.clinicId);
   if (clinicIds.length === 0) return [];
   return db.select().from(visits).where(inArray(visits.clinicId, clinicIds)).orderBy(desc(visits.scheduledStart));
+}
+
+export async function listWeeklyAssignmentsForManager(managerUserId: number, clinicId: number, weekStart: Date) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [membership] = await db.select({ clinicId: clinicMemberships.clinicId, clinicName: clinicMemberships.clinicName }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  if (!membership) return undefined;
+  const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const rows = await db.select({ visitId: visits.id, reference: visits.reference, scheduledStart: visits.scheduledStart, state: visits.state, assigneeUserId: visitAssignments.assigneeUserId, assigneeLabel: visitAssignments.assigneeLabel }).from(visits).innerJoin(visitAssignments, eq(visitAssignments.visitId, visits.id)).where(and(eq(visits.clinicId, clinicId), gte(visits.scheduledStart, weekStart), lt(visits.scheduledStart, weekEnd))).orderBy(visits.scheduledStart).limit(100);
+  return { clinicId, clinicName: membership.clinicName, weekStart, rows };
 }
 
 export async function listManagedNotificationClinics(managerUserId: number) {
