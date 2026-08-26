@@ -1,4 +1,5 @@
 import { index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { staffSkillCodes } from "../shared/staffSkills";
 
 /**
  * Core user table backing auth flow.
@@ -34,6 +35,7 @@ export const visits = mysqlTable("visits", {
   clinicId: int("clinicId").notNull().default(1),
   clinicName: varchar("clinicName", { length: 160 }).notNull(),
   serviceName: varchar("serviceName", { length: 160 }).notNull(),
+  requiredStaffSkill: mysqlEnum("requiredStaffSkill", staffSkillCodes).notNull().default("GENERAL_HOME_VISIT"),
   districtLabel: varchar("districtLabel", { length: 180 }).notNull(),
   scheduledStart: timestamp("scheduledStart").notNull(),
   state: mysqlEnum("state", visitStates).default("REQUESTED").notNull(),
@@ -251,4 +253,16 @@ export const patientNotifications = mysqlTable("patient_notifications", {
 ]);
 
 export type Visit = typeof visits.$inferSelect;
+
+export const staffServiceSkills = mysqlTable("staff_service_skills", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull(),
+  staffUserId: int("staffUserId").notNull(),
+  skillCode: mysqlEnum("skillCode", staffSkillCodes).notNull(),
+  updatedByUserId: int("updatedByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("staff_service_skills_clinic_staff_skill_unique").on(table.clinicId, table.staffUserId, table.skillCode),
+  index("staff_service_skills_clinic_staff_idx").on(table.clinicId, table.staffUserId),
+]);
 export type VisitState = (typeof visitStates)[number];

@@ -8,6 +8,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { isAllowedVisitTransition } from "./visitPolicy";
 import { listStaffWeeklyCapacitySettings, setStaffWeeklyCapacitySetting } from "./db";
+import { listStaffServiceSkills, setStaffServiceSkills, setVisitRequiredStaffSkill } from "./db";
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { createPatientNotification, listPatientNotifications, markPatientNotificationRead } from "./patientNotificationDb";
 
@@ -28,6 +29,11 @@ export const appRouter = router({
     listMine: protectedProcedure.query(({ ctx }) => listVisitsForPatient(ctx.user.id)),
     listOperations: adminProcedure.query(({ ctx }) => listOperationalVisits(ctx.user.id)),
     listAssignedToMe: protectedProcedure.query(({ ctx }) => listAssignedVisitsForUser(ctx.user.id)),
+    setRequiredStaffSkill: adminProcedure.input(z.object({ visitId: z.number().int().positive(), requiredStaffSkill: z.enum(["GENERAL_HOME_VISIT", "MOBILITY_ASSISTANCE", "MEDICATION_SUPPORT", "SAMPLE_COLLECTION"]) })).mutation(async ({ ctx, input }) => {
+      const result = await setVisitRequiredStaffSkill(ctx.user.id, input.visitId, input.requiredStaffSkill);
+      if (!result) throw new TRPCError({ code: "FORBIDDEN", message: "Visit skill requirement cannot be updated" });
+      return result;
+    }),
     getMine: protectedProcedure.input(z.object({ visitId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       const visit = await getVisitForPatient(input.visitId, ctx.user.id);
       if (!visit) throw new TRPCError({ code: "NOT_FOUND" });
@@ -137,6 +143,18 @@ export const appRouter = router({
       const setting = await setStaffWeeklyCapacitySetting(ctx.user.id, input.clinicId, input.staffUserId, input.targetActiveAssignments);
       if (!setting) throw new TRPCError({ code: "FORBIDDEN", message: "Weekly capacity cannot be updated for this clinic or staff member" });
       return setting;
+    }),
+  }),
+  staffSkills: router({
+    list: adminProcedure.input(z.object({ clinicId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const skills = await listStaffServiceSkills(ctx.user.id, input.clinicId);
+      if (!skills) throw new TRPCError({ code: "FORBIDDEN", message: "Staff skills cannot be read for this clinic" });
+      return skills;
+    }),
+    set: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), staffUserId: z.number().int().positive(), skillCodes: z.array(z.enum(["GENERAL_HOME_VISIT", "MOBILITY_ASSISTANCE", "MEDICATION_SUPPORT", "SAMPLE_COLLECTION"])).max(4) })).mutation(async ({ ctx, input }) => {
+      const skills = await setStaffServiceSkills(ctx.user.id, input.clinicId, input.staffUserId, input.skillCodes);
+      if (!skills) throw new TRPCError({ code: "FORBIDDEN", message: "Staff skills cannot be updated for this clinic or staff member" });
+      return skills;
     }),
   }),
   audit: router({
