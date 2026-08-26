@@ -47,6 +47,7 @@ export const appRouter = router({
         const availability = await getVisitAssignmentAvailability(ctx.user.id, input.visitId, input.assigneeUserId);
         if (!availability) throw new TRPCError({ code: "FORBIDDEN", message: "Assignment availability cannot be checked for this clinic" });
         if (availability.status === "OUTSIDE_AVAILABILITY") throw new TRPCError({ code: "CONFLICT", message: "The selected staff member is not available for this visit time" });
+        if (availability.status === "ASSIGNMENT_CONFLICT") throw new TRPCError({ code: "CONFLICT", message: "The selected staff member already has an overlapping visit assignment" });
       }
       const visit = await assignVisit({ ...input, assignedByUserId: ctx.user.id });
       if (!visit) throw new TRPCError({ code: "CONFLICT", message: "Visit cannot be assigned in its current state" });

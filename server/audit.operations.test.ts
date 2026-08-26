@@ -28,6 +28,12 @@ describe("audit operations", () => {
     await expect(caller.visits.assign({ visitId: 8, assigneeUserId: 19, assigneeLabel: "عضو تجريبي" })).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
+  it("rejects assignment when the selected staff member has an overlapping assigned visit", async () => {
+    mocks.getVisitAssignmentAvailability.mockResolvedValue({ visitId: 8, clinicId: 2, visitReference: "V-8", scheduledStart: new Date("2026-08-28T09:00:00.000Z"), durationMinutes: 60, status: "ASSIGNMENT_CONFLICT", conflictingVisitReference: "V-7" });
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.visits.assign({ visitId: 8, assigneeUserId: 19, assigneeLabel: "عضو تجريبي" })).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
   it("updates availability through the current administrator and rejects a detected overlap", async () => {
     const startAt = new Date("2026-08-28T08:00:00.000Z");
     const endAt = new Date("2026-08-28T12:00:00.000Z");

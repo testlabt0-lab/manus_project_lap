@@ -4,6 +4,7 @@ import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMember
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { hasAvailabilityOverlap } from "./staffAvailabilityPolicy";
+import { findConflictingAssignedVisit, VISIT_ASSIGNMENT_DURATION_MINUTES } from "./visitAssignmentPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { buildVisitCreatedNotification, buildVisitStatusNotification } from "./patientNotificationPolicy";
 import { buildNotificationResponseComparison, buildNotificationResponseReport, buildNotificationResponseThresholdAlert, buildNotificationResponseTrend } from "./notificationResponsePolicy";
@@ -396,9 +397,12 @@ export async function getVisitAssignmentAvailability(managerUserId: number, visi
   const windows = await db.select().from(staffAvailabilityWindows).where(and(eq(staffAvailabilityWindows.clinicId, visit.clinicId), eq(staffAvailabilityWindows.staffUserId, staffUserId))).orderBy(desc(staffAvailabilityWindows.startAt)).limit(30);
   const activeWindows = windows.filter(window => !window.cancelledAt);
   const visitStart = new Date(visit.scheduledStart);
-  const visitEnd = new Date(visitStart.getTime() + 60 * 60 * 1000);
+  const visitEnd = new Date(visitStart.getTime() + VISIT_ASSIGNMENT_DURATION_MINUTES * 60 * 1000);
   const isCovered = activeWindows.some(window => new Date(window.startAt) <= visitStart && new Date(window.endAt) >= visitEnd);
-  return { visitId: visit.id, clinicId: visit.clinicId, visitReference: visit.reference, scheduledStart: visitStart, durationMinutes: 60, status: activeWindows.length === 0 ? "NOT_CONFIGURED" as const : isCovered ? "AVAILABLE" as const : "OUTSIDE_AVAILABILITY" as const };
+  const assignedVisits = await db.select({ id: visits.id, reference: visits.reference, scheduledStart: visits.scheduledStart, state: visits.state }).from(visitAssignments).innerJoin(visits, eq(visitAssignments.visitId, visits.id)).where(and(eq(visitAssignments.assigneeUserId, staffUserId), eq(visits.clinicId, visit.clinicId)));
+  const conflictingVisit = findConflictingAssignedVisit(assignedVisits, visit.id, visitStart);
+  const availabilityStatus = activeWindows.length === 0 ? "NOT_CONFIGURED" as const : isCovered ? "AVAILABLE" as const : "OUTSIDE_AVAILABILITY" as const;
+  return { visitId: visit.id, clinicId: visit.clinicId, visitReference: visit.reference, scheduledStart: visitStart, durationMinutes: VISIT_ASSIGNMENT_DURATION_MINUTES, status: conflictingVisit ? "ASSIGNMENT_CONFLICT" as const : availabilityStatus, conflictingVisitReference: conflictingVisit?.reference };
 }
 
 export async function listAuditEventsForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date; query?: string; clinicId?: number } = {}) {
@@ -524,14 +528,8 @@ export async function assignVisit(input: { visitId: number; assignedByUserId: nu
   if (input.assigneeUserId) {
     const assigneeMembership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.assigneeUserId), eq(clinicMemberships.clinicId, current.clinicId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"]))).limit(1))[0];
     if (!isEligibleAssigneeMembership(assigneeMembership, current.clinicId)) return undefined;
-    const availabilityWindows = await db.select().from(staffAvailabilityWindows).where(and(eq(staffAvailabilityWindows.clinicId, current.clinicId), eq(staffAvailabilityWindows.staffUserId, input.assigneeUserId))).orderBy(desc(staffAvailabilityWindows.startAt)).limit(30);
-    const activeAvailabilityWindows = availabilityWindows.filter(window => !window.cancelledAt);
-    if (activeAvailabilityWindows.length > 0) {
-      const visitStart = new Date(current.scheduledStart);
-      const visitEnd = new Date(visitStart.getTime() + 60 * 60 * 1000);
-      const isCovered = activeAvailabilityWindows.some(window => new Date(window.startAt) <= visitStart && new Date(window.endAt) >= visitEnd);
-      if (!isCovered) return undefined;
-    }
+    const availability = await getVisitAssignmentAvailability(input.assignedByUserId, current.id, input.assigneeUserId);
+    if (!availability || availability.status === "OUTSIDE_AVAILABILITY" || availability.status === "ASSIGNMENT_CONFLICT") return undefined;
   }
   await db.transaction(async tx => {
     await tx.insert(visitAssignments).values({ visitId: input.visitId, assignedByUserId: input.assignedByUserId, assigneeLabel: input.assigneeLabel, assigneeUserId: input.assigneeUserId });
