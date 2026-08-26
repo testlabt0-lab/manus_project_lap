@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("drizzle-orm/mysql2", () => ({ drizzle: () => mocks.db }));
 
-import { assignVisit, getAuditEventDetailsForManager, listAssignedVisitsForUser, listAuditEventsForManager } from "./db";
+import { assignVisit, exportAuditEventsCsvForManager, getAuditEventDetailsForManager, listAssignedVisitsForUser, listAuditEventsForManager } from "./db";
 
 function selectRows(rows: unknown[]) {
   const chain = {
@@ -62,6 +62,17 @@ describe("database membership scope", () => {
       .mockReturnValueOnce(selectRows([{ id: 5, name: "مدير تجريبي" }]));
 
     await expect(listAuditEventsForManager(2)).resolves.toMatchObject([{ id: 31, clinicName: "عيادة الحياة", actorName: "مدير تجريبي" }]);
+  });
+
+  it("includes the scoped clinic name in the audit CSV without widening the query", async () => {
+    mocks.db.select
+      .mockReturnValueOnce(selectRows([{ userId: 2, clinicId: 1, clinicName: "عيادة الحياة", memberRole: "MANAGER", status: "ACTIVE" }]))
+      .mockReturnValueOnce(selectRows([{ id: 32, clinicId: 1, actorUserId: 5, eventType: "VISIT_ASSIGNED", resourceType: "VISIT", resourceId: 12, summary: "تم التكليف", createdAt: new Date("2026-08-26T09:00:00.000Z") }]))
+      .mockReturnValueOnce(selectRows([{ id: 5, name: "مدير تجريبي" }]));
+
+    const exported = await exportAuditEventsCsvForManager(2);
+    expect(exported.content).toContain('"اسم العيادة"');
+    expect(exported.content).toContain('"عيادة الحياة"');
   });
 
   it("returns no audit event detail when the requested event is outside the manager's active clinics", async () => {

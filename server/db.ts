@@ -345,8 +345,8 @@ function csvCell(value: unknown) {
 export async function exportAuditEventsCsvForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date; query?: string; clinicId?: number } = {}) {
   const events = await listAuditEventsForManager(managerUserId, filter);
   const rows = [
-    ["التاريخ UTC", "نوع الحدث", "الملخص التشغيلي", "المنفذ", "نوع المورد", "معرف المورد"],
-    ...events.map(event => [new Date(event.createdAt).toISOString(), event.eventType, event.summary, event.actorName, event.resourceType, event.resourceId]),
+    ["التاريخ UTC", "اسم العيادة", "نوع الحدث", "الملخص التشغيلي", "المنفذ", "نوع المورد", "معرف المورد"],
+    ...events.map(event => [new Date(event.createdAt).toISOString(), event.clinicName, event.eventType, event.summary, event.actorName, event.resourceType, event.resourceId]),
   ];
   return {
     filename: `medicare-audit-${new Date().toISOString().slice(0, 10)}.csv`,
