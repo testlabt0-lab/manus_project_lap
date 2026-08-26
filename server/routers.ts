@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit, updateStaffAvailabilityWindow } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -90,7 +90,15 @@ export const appRouter = router({
     create: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), staffUserId: z.number().int().positive(), startAt: z.date(), endAt: z.date() })).mutation(async ({ ctx, input }) => {
       if (input.startAt >= input.endAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Availability start must precede end" });
       const window = await createStaffAvailabilityWindow({ ...input, managerUserId: ctx.user.id });
+      if (window === "OVERLAP") throw new TRPCError({ code: "CONFLICT", message: "Availability window overlaps an existing window" });
       if (!window) throw new TRPCError({ code: "FORBIDDEN", message: "Staff availability cannot be created for this clinic or staff member" });
+      return window;
+    }),
+    update: adminProcedure.input(z.object({ availabilityWindowId: z.number().int().positive(), startAt: z.date(), endAt: z.date() })).mutation(async ({ ctx, input }) => {
+      if (input.startAt >= input.endAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Availability start must precede end" });
+      const window = await updateStaffAvailabilityWindow({ ...input, managerUserId: ctx.user.id });
+      if (window === "OVERLAP") throw new TRPCError({ code: "CONFLICT", message: "Availability window overlaps an existing window" });
+      if (!window) throw new TRPCError({ code: "FORBIDDEN", message: "Staff availability cannot be updated by this user" });
       return window;
     }),
     cancel: adminProcedure.input(z.object({ availabilityWindowId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {

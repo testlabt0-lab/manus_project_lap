@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
+import { hasAvailabilityOverlap } from "./staffAvailabilityPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { buildVisitCreatedNotification, buildVisitStatusNotification } from "./patientNotificationPolicy";
 import { buildNotificationResponseComparison, buildNotificationResponseReport, buildNotificationResponseThresholdAlert, buildNotificationResponseTrend } from "./notificationResponsePolicy";
@@ -351,9 +352,25 @@ export async function createStaffAvailabilityWindow(input: { managerUserId: numb
   if (!managerMembership) return undefined;
   const [staffMembership] = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.staffUserId), eq(clinicMemberships.clinicId, input.clinicId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"]))).limit(1);
   if (!staffMembership) return undefined;
+  const existingWindows = await db.select().from(staffAvailabilityWindows).where(and(eq(staffAvailabilityWindows.clinicId, input.clinicId), eq(staffAvailabilityWindows.staffUserId, input.staffUserId))).orderBy(desc(staffAvailabilityWindows.startAt)).limit(30);
+  if (hasAvailabilityOverlap(existingWindows, input.startAt, input.endAt)) return "OVERLAP" as const;
   const createdAt = new Date();
   await db.insert(staffAvailabilityWindows).values({ clinicId: input.clinicId, staffUserId: input.staffUserId, startAt: input.startAt, endAt: input.endAt, createdByUserId: input.managerUserId, createdAt });
   return { clinicId: input.clinicId, clinicName: managerMembership.clinicName, staffUserId: input.staffUserId, startAt: input.startAt, endAt: input.endAt, createdAt };
+}
+
+export async function updateStaffAvailabilityWindow(input: { managerUserId: number; availabilityWindowId: number; startAt: Date; endAt: Date }) {
+  if (input.startAt >= input.endAt) return undefined;
+  const db = await getDb();
+  if (!db) return undefined;
+  const [window] = await db.select().from(staffAvailabilityWindows).where(eq(staffAvailabilityWindows.id, input.availabilityWindowId)).limit(1);
+  if (!window || window.cancelledAt) return undefined;
+  const [managerMembership] = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.managerUserId), eq(clinicMemberships.clinicId, window.clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1);
+  if (!managerMembership) return undefined;
+  const existingWindows = await db.select().from(staffAvailabilityWindows).where(and(eq(staffAvailabilityWindows.clinicId, window.clinicId), eq(staffAvailabilityWindows.staffUserId, window.staffUserId))).orderBy(desc(staffAvailabilityWindows.startAt)).limit(30);
+  if (hasAvailabilityOverlap(existingWindows, input.startAt, input.endAt, window.id)) return "OVERLAP" as const;
+  await db.update(staffAvailabilityWindows).set({ startAt: input.startAt, endAt: input.endAt }).where(eq(staffAvailabilityWindows.id, window.id));
+  return { ...window, startAt: input.startAt, endAt: input.endAt, clinicName: managerMembership.clinicName };
 }
 
 export async function cancelStaffAvailabilityWindow(managerUserId: number, availabilityWindowId: number) {
