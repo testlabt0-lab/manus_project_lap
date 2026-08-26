@@ -31,7 +31,7 @@ import {
   UsersRound,
   WalletCards,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ManagerNotificationCenter } from "./ManagerNotificationCenter";
 import { StaffAvailabilityPage } from "./StaffAvailabilityPage";
 import { NotificationAcknowledgementAudit } from "./NotificationAcknowledgementAudit";
@@ -39,10 +39,11 @@ import { AuditEventDetailsDialog } from "../components/AuditEventDetailsDialog";
 import { canReadPatientVisitOutput, nextVisitState, progressForVisit, visitStateMeta, type VisitState } from "../../../shared/medicare";
 import { DEMO_VISIT } from "../../../shared/mockData";
 import { clinicalReportTemplateCodes, clinicalReportTemplateLabels, clinicalReportTemplateSections, type ClinicalReportTemplateCode } from "../../../shared/clinicalReports";
+import { appendFieldAction, createFieldQueuedAction, fieldQueueStorageKey, fieldTasksStorageKey, markFieldActionsSynced, type FieldQueuedAction, type FieldTaskSnapshot } from "../../../shared/fieldOfflineQueue";
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/medicare-pro-web-notification-p2_00c9a159.zip";
+const PACKAGE_URL = "/manus-storage/medicare-pro-web-p3-field-final_3ef11869.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";
@@ -81,6 +82,7 @@ function TopBar({ path, navigate, role, setRole }: { path: string; navigate: (to
       <button className={`nav-item ${path.startsWith("/operations") || path === "/team" ? "active" : ""}`} onClick={() => navigate(role === "staff" ? "/team" : "/operations")}>لوحات التشغيل</button>
       <button className={`nav-item ${path === "/flow" || path === "/docs" ? "active" : ""}`} onClick={() => navigate("/flow")}>مركز المعرفة</button>
       <button className={`nav-item ${path === "/notification-audit" ? "active" : ""}`} onClick={() => navigate("/notification-audit")}>سجل التأكيدات</button>
+      <button className={`nav-item ${path === "/field" ? "active" : ""}`} onClick={() => navigate("/field")}>المساحة الميدانية</button>
     </nav>
     <div className="flex items-center gap-2">
       <button className={`outline-btn hidden sm:inline-flex ${path === "/notifications" ? "border-[#0b776b] text-[#0b776b]" : ""}`} aria-label="مركز الإشعارات" onClick={() => navigate("/notifications")}> <Bell size={16} /> </button>
@@ -327,6 +329,22 @@ function FlowPage({ navigate }: { navigate: (to: string) => void }) { const [act
 
 function DocsPage() { const docs = [{ id:"dfd", type:"DFD", title:"مخطط تدفق البيانات", desc:"المستوى التفصيلي للكيانات والعمليات ومخازن البيانات.", src:DFD_URL },{ id:"seq", type:"SEQUENCE", title:"مخطط تسلسل الزيارة", desc:"من الحجز حتى التقرير والفاتورة والإشعار.", src:SEQUENCE_URL },{ id:"erd", type:"ERD", title:"مخطط قاعدة البيانات", desc:"الكيانات والعلاقات المرتبطة بمسار المريض.", src:ERD_URL },{ id:"security", type:"SECURITY", title:"الأمن والصلاحيات", desc:"RBAC وJWT وRLS وسجل التدقيق.", src:"" },{ id:"test", type:"TESTING", title:"خطة اختبار UI/UX", desc:"حالات UI والوصول وتجربة المستخدم.", src:"" },{ id:"design", type:"DESIGN SYSTEM", title:"نظام التصميم", desc:"Tokens ومكتبة المكونات وقواعد الاستجابة.", src:"" }]; const [selected,setSelected] = useState(docs[0]); return <main className="shell page-wrap"><div className="page-header"><div><h1>مركز الوثائق</h1><p>المخططات والوثائق الهندسية التي تدعم المشروع في مكان واحد.</p></div><a className="primary-btn inline-flex items-center" href={PACKAGE_URL} download><Download className="ml-2" size={16}/> تنزيل حزمة المشروع</a></div><section className="doc-grid">{docs.map(doc => <button key={doc.id} className={`panel doc-card ${selected.id === doc.id ? "ring-2 ring-[#0b776b]/20" : ""}`} onClick={() => setSelected(doc)}><div className="doc-thumb">{doc.src ? <img src={doc.src} alt={`معاينة ${doc.title}`} /> : <FileText className="doc-thumb-icon" size={38}/>}</div><div className="doc-body"><span className="doc-type">{doc.type}</span><h3>{doc.title}</h3><p>{doc.desc}</p></div></button>)}</section><section className="panel preview-panel"><div className="section-head"><div><h2 className="section-title">معاينة: {selected.title}</h2><p className="section-copy">{selected.desc}</p></div><MoreHorizontal className="text-[#789188]"/></div>{selected.src ? <img className="preview-image" src={selected.src} alt={`المعاينة الكبيرة لـ ${selected.title}`} /> : <div className="rounded-2xl bg-[#f6faf8] p-9 text-center text-sm text-[#6b867d]"><FileText className="mx-auto mb-3 text-[#0b776b]" size={33}/><p>يتوفر هذا المستند ضمن حزمة المشروع المضغوطة.</p><a className="mt-4 inline-flex text-sm font-bold text-[#0b776b] underline" href={PACKAGE_URL} download>تنزيل الحزمة</a></div>}</section></main>; }
 
+function FieldMobilePage({ navigate }: { navigate: (to: string) => void }) {
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [tasks, setTasks] = useState<FieldTaskSnapshot[]>(() => {
+    if (typeof window === "undefined") return [{ visitId: 1, reference: DEMO_VISIT.reference, scheduledStart: Date.now(), state: DEMO_VISIT.state }];
+    try { return JSON.parse(window.localStorage.getItem(fieldTasksStorageKey) ?? "null") ?? [{ visitId: 1, reference: DEMO_VISIT.reference, scheduledStart: Date.now(), state: DEMO_VISIT.state }]; } catch { return []; }
+  });
+  const [queue, setQueue] = useState<FieldQueuedAction[]>(() => { try { return JSON.parse(window.localStorage.getItem(fieldQueueStorageKey) ?? "[]"); } catch { return []; } });
+  useEffect(() => { const onOnline = () => setOnline(true); const onOffline = () => setOnline(false); window.addEventListener("online", onOnline); window.addEventListener("offline", onOffline); return () => { window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); }; }, []);
+  useEffect(() => { window.localStorage.setItem(fieldQueueStorageKey, JSON.stringify(queue)); }, [queue]);
+  useEffect(() => { window.localStorage.setItem(fieldTasksStorageKey, JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { if (online && queue.some(action => action.syncState === "PENDING")) { const pending = queue.filter(action => action.syncState === "PENDING"); const timer = window.setTimeout(() => setQueue(current => markFieldActionsSynced(current, pending.map(action => action.id))), 500); return () => window.clearTimeout(timer); } }, [online, queue]);
+  const actionFor = (task: FieldTaskSnapshot) => { const actionType = task.state === "ASSIGNED" || task.state === "CONFIRMED" ? "ARRIVED" : task.state === "ARRIVED" ? "IN_PROGRESS" : "COMPLETED"; const action = createFieldQueuedAction({ visitId: task.visitId, reference: task.reference, actionType }); setQueue(current => appendFieldAction(current, action)); setTasks(current => current.map(item => item.visitId === task.visitId ? { ...item, state: actionType } : item)); };
+  const pendingCount = queue.filter(action => action.syncState === "PENDING").length;
+  return <main className="shell page-wrap"><div className="page-header"><div><h1>المساحة الميدانية</h1><p>تنفيذ حالات الزيارة من هاتف الفريق مع طابور آمن عند ضعف الاتصال.</p></div><button className="outline-btn" onClick={() => navigate("/team")}>مساحة الفريق</button></div><section className="panel mx-auto max-w-3xl"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="section-title">مهام اليوم</h2><p className="section-copy">المحفوظ محلياً يقتصر على مرجع الزيارة والوقت والحالة، ولا يشمل اسم مريض أو عنواناً أو محتوى سريرياً.</p></div><span className={`badge ${online ? "badge-success" : "badge-warning"}`}>{online ? "متصل" : "غير متصل"}</span></div><div className="mt-5 grid gap-3">{tasks.map(task => <article key={task.visitId} className="rounded-2xl border border-[#dbe9e4] bg-[#fbfefd] p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs text-[#6b867e]">{task.reference} · {new Date(task.scheduledStart).toLocaleString("ar-SA")}</p><h3 className="mt-1 font-bold text-[#31584f]">حالة المهمة: {task.state}</h3></div><button className="primary-btn" onClick={() => actionFor(task)}>{task.state === "ASSIGNED" || task.state === "CONFIRMED" ? "تسجيل الوصول" : task.state === "ARRIVED" ? "بدء الزيارة" : "إكمال الزيارة"}</button></div></article>)}</div><div className="mt-5 rounded-2xl bg-[#f5faf8] p-4 text-sm leading-7 text-[#527169]"><ShieldCheck className="ml-2 inline text-[#0b776b]" size={16}/> {pendingCount ? `يوجد ${pendingCount} إجراء بانتظار المزامنة.` : online ? "لا توجد إجراءات معلقة." : "ستُحفظ الإجراءات محلياً حتى عودة الاتصال."}</div></section></main>;
+}
+
 export default function Home() {
   const [location, setLocation] = useLocation(); const [role,setRole] = useState<Role>("patient"); const [visitState,setVisitState] = useState<VisitState>("EN_ROUTE");
   const path = location === "/" ? "/" : location.replace(/\?.*$/, "").replace(/\/$/, ""); const navigate = (to:string) => setLocation(to);
@@ -342,6 +360,7 @@ export default function Home() {
     if (path === "/book") return <BookingPage navigate={navigate}/>;
     if (path === "/notifications") return <ManagerNotificationCenter navigate={navigate}/>;
     if (path === "/availability") return <StaffAvailabilityPage navigate={navigate}/>;
+    if (path === "/field") return <FieldMobilePage navigate={navigate}/>;
     if (path === "/notification-audit") return <NotificationAcknowledgementAudit navigate={navigate}/>;
     if (path.startsWith("/visit/")) return <VisitDetails navigate={navigate} visitState={visitState} setVisitState={setVisitState} visitId={liveVisitId ? Number(liveVisitId) : undefined}/>;
     if (path === "/visits") return <VisitsPage navigate={navigate} visitState={visitState}/>;
