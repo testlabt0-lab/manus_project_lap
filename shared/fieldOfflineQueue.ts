@@ -14,7 +14,10 @@ export type FieldQueuedAction = {
   reference: string;
   actionType: FieldActionType;
   occurredAt: number;
-  syncState: "PENDING" | "SYNCED";
+  syncState: "PENDING" | "SYNCED" | "FAILED";
+  attempts: number;
+  lastAttemptAt?: number;
+  errorCode?: "TEMPORARY_UNAVAILABLE";
 };
 
 export function createFieldQueuedAction(input: { visitId: number; reference: string; actionType: FieldActionType; occurredAt?: number }): FieldQueuedAction {
@@ -25,6 +28,7 @@ export function createFieldQueuedAction(input: { visitId: number; reference: str
     actionType: input.actionType,
     occurredAt: input.occurredAt ?? Date.now(),
     syncState: "PENDING",
+    attempts: 0,
   };
 }
 
@@ -33,9 +37,19 @@ export function appendFieldAction(queue: readonly FieldQueuedAction[], action: F
   return [...withoutDuplicate, action].slice(-50);
 }
 
-export function markFieldActionsSynced(queue: readonly FieldQueuedAction[], ids: readonly string[]) {
+export function markFieldActionsSynced(queue: readonly FieldQueuedAction[], ids: readonly string[], now = Date.now()) {
   const idSet = new Set(ids);
-  return queue.map(item => idSet.has(item.id) ? { ...item, syncState: "SYNCED" as const } : item);
+  return queue.map(item => idSet.has(item.id) ? { ...item, syncState: "SYNCED" as const, attempts: item.attempts + 1, lastAttemptAt: now, errorCode: undefined } : item);
+}
+
+export function markFieldActionsFailed(queue: readonly FieldQueuedAction[], ids: readonly string[], now = Date.now()) {
+  const idSet = new Set(ids);
+  return queue.map(item => idSet.has(item.id) ? { ...item, syncState: "FAILED" as const, attempts: item.attempts + 1, lastAttemptAt: now, errorCode: "TEMPORARY_UNAVAILABLE" as const } : item);
+}
+
+export function retryFieldActions(queue: readonly FieldQueuedAction[], ids: readonly string[]) {
+  const idSet = new Set(ids);
+  return queue.map(item => idSet.has(item.id) && item.syncState === "FAILED" ? { ...item, syncState: "PENDING" as const, errorCode: undefined } : item);
 }
 
 export const fieldQueueStorageKey = "medicare-pro-field-queue-v1";
