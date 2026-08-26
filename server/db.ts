@@ -324,6 +324,18 @@ export async function listAuditEventsForManager(managerUserId: number, filter: {
   return events.map(event => ({ ...event, actorName: actorUsers.find(user => user.id === event.actorUserId)?.name ?? "مستخدم تشغيلي" }));
 }
 
+export async function getAuditEventDetailsForManager(managerUserId: number, eventId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const managerMemberships = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER")));
+  const clinicIds = managerMemberships.map(membership => membership.clinicId);
+  if (clinicIds.length === 0) return undefined;
+  const [event] = await db.select().from(auditEvents).where(and(eq(auditEvents.id, eventId), inArray(auditEvents.clinicId, clinicIds))).limit(1);
+  if (!event) return undefined;
+  const [actor] = await db.select({ name: users.name }).from(users).where(eq(users.id, event.actorUserId)).limit(1);
+  return { id: event.id, clinicId: event.clinicId, eventType: event.eventType, resourceType: event.resourceType, resourceId: event.resourceId, summary: event.summary, createdAt: event.createdAt, actorName: actor?.name ?? "مستخدم تشغيلي" };
+}
+
 function csvCell(value: unknown) {
   const normalized = String(value ?? "").replace(/[\r\n]+/g, " ");
   const safe = /^[=+\-@]/.test(normalized) ? `'${normalized}` : normalized;

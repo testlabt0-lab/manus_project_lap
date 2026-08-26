@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -72,6 +72,11 @@ export const appRouter = router({
     }),
   }),
   audit: router({
+    getOperation: adminProcedure.input(z.object({ eventId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const event = await getAuditEventDetailsForManager(ctx.user.id, input.eventId);
+      if (!event) throw new TRPCError({ code: "NOT_FOUND" });
+      return event;
+    }),
     listOperations: adminProcedure.input(z.object({ eventType: z.enum(auditEventTypes).optional(), from: z.date().optional(), to: z.date().optional(), query: z.string().trim().min(2).max(80).optional(), clinicId: z.number().int().positive().optional() }).optional()).query(({ ctx, input }) => {
       if (input?.from && input.to && input.from > input.to) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid audit date range" });
       return listAuditEventsForManager(ctx.user.id, input);

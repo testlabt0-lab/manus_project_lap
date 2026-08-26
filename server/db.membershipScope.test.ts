@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("drizzle-orm/mysql2", () => ({ drizzle: () => mocks.db }));
 
-import { assignVisit, listAssignedVisitsForUser, listAuditEventsForManager } from "./db";
+import { assignVisit, getAuditEventDetailsForManager, listAssignedVisitsForUser, listAuditEventsForManager } from "./db";
 
 function selectRows(rows: unknown[]) {
   const chain = {
@@ -53,5 +53,14 @@ describe("database membership scope", () => {
 
     await expect(listAuditEventsForManager(2, { clinicId: 9 })).resolves.toEqual([]);
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns no audit event detail when the requested event is outside the manager's active clinics", async () => {
+    mocks.db.select
+      .mockReturnValueOnce(selectRows([{ userId: 2, clinicId: 1, memberRole: "MANAGER", status: "ACTIVE" }]))
+      .mockReturnValueOnce(selectRows([]));
+
+    await expect(getAuditEventDetailsForManager(2, 91)).resolves.toBeUndefined();
+    expect(mocks.db.select).toHaveBeenCalledTimes(2);
   });
 });
