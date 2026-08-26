@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   ensureDemoClinicianForOperationalClinic: vi.fn(),
   getVisitAssignmentAvailability: vi.fn().mockResolvedValue({ visitId: 14, clinicId: 1, visitReference: "V-000014", scheduledStart: new Date("2026-06-01T08:00:00.000Z"), durationMinutes: 60, status: "AVAILABLE" }),
   listAssignedVisitsForUser: vi.fn(),
+  syncFieldAction: vi.fn(),
 }));
 
 vi.mock("./db", () => ({
@@ -17,6 +18,7 @@ vi.mock("./db", () => ({
   getVisitForPatient: vi.fn(),
   listActiveMembershipsForUser: vi.fn(),
   listAssignedVisitsForUser: mocks.listAssignedVisitsForUser,
+  syncFieldAction: mocks.syncFieldAction,
   listOperationalVisits: vi.fn(),
   listStaffForOperationalClinics: vi.fn(),
   listVisitsForPatient: vi.fn(),
@@ -49,6 +51,7 @@ describe("visits mutations", () => {
     mocks.assignVisit.mockReset();
     mocks.createVisitForPatient.mockReset();
     mocks.listAssignedVisitsForUser.mockReset();
+    mocks.syncFieldAction.mockReset();
   });
 
   it("creates a booking for the authenticated patient only", async () => {
@@ -84,6 +87,20 @@ describe("visits mutations", () => {
 
     await expect(caller.visits.listAssignedToMe()).resolves.toEqual(assignedVisits);
     expect(mocks.listAssignedVisitsForUser).toHaveBeenCalledWith(1);
+  });
+
+  it("syncs a field action with the authenticated actor and operational identifiers only", async () => {
+    const synced = { actionId: "12-ARRIVED-1000", status: "SYNCED", appliedState: "ARRIVED" };
+    mocks.syncFieldAction.mockResolvedValue(synced);
+    const caller = appRouter.createCaller(context("user"));
+    await expect(caller.visits.syncField({ actionId: "12-ARRIVED-1000", visitId: 12, actionType: "ARRIVED" })).resolves.toEqual(synced);
+    expect(mocks.syncFieldAction).toHaveBeenCalledWith({ actionId: "12-ARRIVED-1000", visitId: 12, actionType: "ARRIVED", changedByUserId: 1 });
+  });
+
+  it("maps invalid field transitions to a conflict without leaking clinical details", async () => {
+    mocks.syncFieldAction.mockResolvedValue({ actionId: "12-COMPLETED-1000", status: "REJECTED", reason: "INVALID_STATE" });
+    const caller = appRouter.createCaller(context("user"));
+    await expect(caller.visits.syncField({ actionId: "12-COMPLETED-1000", visitId: 12, actionType: "COMPLETED" })).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
   it("returns an empty assigned-task list when membership scope excludes the current user", async () => {

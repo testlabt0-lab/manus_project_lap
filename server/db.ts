@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, like, lt, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, clinicVisitDurationSettings, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, clinicVisitDurationSettings, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory, fieldSyncReceipts } from "../drizzle/schema";
 import { staffWeeklyCapacitySettings } from "../drizzle/schema";
 import { staffServiceSkills } from "../drizzle/schema";
 import { staffServiceZones } from "../drizzle/schema";
@@ -16,8 +16,9 @@ import { summarizeWeeklyWorkloads, type WeeklyAssignmentForWorkload } from "./we
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { buildVisitCreatedNotification, buildVisitStatusNotification } from "./patientNotificationPolicy";
 import { buildNotificationResponseComparison, buildNotificationResponseReport, buildNotificationResponseThresholdAlert, buildNotificationResponseTrend } from "./notificationResponsePolicy";
+import { isAllowedVisitTransition } from "./visitPolicy";
 import { clinicalReportTemplateCodes, type ClinicalReportTemplateCode } from "../shared/clinicalReports";
-import { managerNotificationDeliveryPreferences, notificationDeliveryChannels, notificationDeliveryLogs } from "../drizzle/schema";
+import { managerNotificationDeliveryPreferences, notificationConsentAudits, notificationDeliveryChannels, notificationDeliveryLogs } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -262,8 +263,17 @@ export async function setManagerNotificationDeliveryPreference(managerUserId: nu
   const [membership] = await db.select({ clinicName: clinicMemberships.clinicName }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1);
   if (!membership) return undefined;
   await db.insert(managerNotificationDeliveryPreferences).values({ managerUserId, clinicId, channel, enabled }).onDuplicateKeyUpdate({ set: { enabled, updatedAt: new Date() } });
+  await db.insert(notificationConsentAudits).values({ managerUserId, clinicId, channel, enabled, source: "MANAGER_SETTINGS" });
   await db.insert(notificationDeliveryLogs).values({ managerUserId, clinicId, channel, notificationType: "OVERDUE_VISIT", status: enabled ? "SIMULATED" : "DISABLED" });
   return { clinicId, clinicName: membership.clinicName, channel, enabled };
+}
+
+export async function listManagerNotificationConsentAudits(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [membership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1);
+  if (!membership) return undefined;
+  return db.select({ id: notificationConsentAudits.id, channel: notificationConsentAudits.channel, enabled: notificationConsentAudits.enabled, source: notificationConsentAudits.source, changedAt: notificationConsentAudits.changedAt }).from(notificationConsentAudits).where(and(eq(notificationConsentAudits.managerUserId, managerUserId), eq(notificationConsentAudits.clinicId, clinicId))).orderBy(desc(notificationConsentAudits.changedAt)).limit(20);
 }
 
 export async function listManagerNotificationDeliveryLogs(managerUserId: number, clinicId: number) {
@@ -748,6 +758,19 @@ export async function transitionVisit(input: { visitId: number; changedByUserId:
     await db.insert(patientNotifications).values({ userId: visit.patientId, visitId: visit.id, ...buildVisitStatusNotification(visit.state) });
   }
   return visit;
+}
+
+export async function syncFieldAction(input: { actionId: string; visitId: number; changedByUserId: number; actionType: "ARRIVED" | "IN_PROGRESS" | "COMPLETED" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = (await db.select({ actionId: fieldSyncReceipts.actionId, appliedState: fieldSyncReceipts.appliedState }).from(fieldSyncReceipts).where(eq(fieldSyncReceipts.actionId, input.actionId)).limit(1))[0];
+  if (existing) return { actionId: existing.actionId, status: "ALREADY_SYNCED" as const, appliedState: existing.appliedState };
+  const current = (await db.select({ state: visits.state }).from(visits).where(eq(visits.id, input.visitId)).limit(1))[0];
+  if (!current || !isAllowedVisitTransition(current.state, input.actionType)) return { actionId: input.actionId, status: "REJECTED" as const, reason: "INVALID_STATE" as const };
+  const visit = await transitionVisit({ visitId: input.visitId, changedByUserId: input.changedByUserId, nextState: input.actionType });
+  if (!visit) return { actionId: input.actionId, status: "REJECTED" as const, reason: "NOT_AUTHORIZED" as const };
+  await db.insert(fieldSyncReceipts).values({ actionId: input.actionId, visitId: input.visitId, actorUserId: input.changedByUserId, appliedState: input.actionType });
+  return { actionId: input.actionId, status: "SYNCED" as const, appliedState: input.actionType };
 }
 
 export async function getReportForPatient(visitId: number, patientId: number) {

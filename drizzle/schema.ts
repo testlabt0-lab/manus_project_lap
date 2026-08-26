@@ -59,6 +59,17 @@ export const visitStatusHistory = mysqlTable("visit_status_history", {
   index("visit_history_visit_created_idx").on(table.visitId, table.createdAt),
 ]);
 
+export const fieldSyncReceipts = mysqlTable("field_sync_receipts", {
+  id: int("id").autoincrement().primaryKey(),
+  actionId: varchar("actionId", { length: 120 }).notNull().unique(),
+  visitId: int("visitId").notNull(),
+  actorUserId: int("actorUserId").notNull(),
+  appliedState: mysqlEnum("appliedState", visitStates).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("field_sync_receipts_visit_idx").on(table.visitId, table.createdAt),
+]);
+
 export const visitAssignments = mysqlTable("visit_assignments", {
   id: int("id").autoincrement().primaryKey(),
   visitId: int("visitId").notNull(),
@@ -139,6 +150,18 @@ export const managerNotificationDeliveryPreferences = mysqlTable("manager_notifi
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [
   uniqueIndex("manager_notification_delivery_preferences_unique").on(table.managerUserId, table.clinicId, table.channel),
+]);
+
+export const notificationConsentAudits = mysqlTable("notification_consent_audits", {
+  id: int("id").autoincrement().primaryKey(),
+  managerUserId: int("managerUserId").notNull(),
+  clinicId: int("clinicId").notNull(),
+  channel: mysqlEnum("channel", notificationDeliveryChannels).notNull(),
+  enabled: boolean("enabled").notNull(),
+  source: varchar("source", { length: 32 }).notNull().default("MANAGER_SETTINGS"),
+  changedAt: timestamp("changedAt").defaultNow().notNull(),
+}, table => [
+  index("notification_consent_audits_manager_clinic_changed_idx").on(table.managerUserId, table.clinicId, table.changedAt),
 ]);
 
 export const notificationDeliveryLogs = mysqlTable("notification_delivery_logs", {

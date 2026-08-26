@@ -31,7 +31,7 @@ import {
   UsersRound,
   WalletCards,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ManagerNotificationCenter } from "./ManagerNotificationCenter";
 import { StaffAvailabilityPage } from "./StaffAvailabilityPage";
 import { NotificationAcknowledgementAudit } from "./NotificationAcknowledgementAudit";
@@ -43,7 +43,7 @@ import { appendFieldAction, createFieldQueuedAction, fieldQueueStorageKey, field
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/medicare-pro-web-p3-sync-retry_7b440e30.zip";
+const PACKAGE_URL = "/manus-storage/medicare-pro-web-p3-server-sync_f67d45ad.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";
@@ -336,10 +336,12 @@ function FieldMobilePage({ navigate }: { navigate: (to: string) => void }) {
     try { return JSON.parse(window.localStorage.getItem(fieldTasksStorageKey) ?? "null") ?? [{ visitId: 1, reference: DEMO_VISIT.reference, scheduledStart: Date.now(), state: DEMO_VISIT.state }]; } catch { return []; }
   });
   const [queue, setQueue] = useState<FieldQueuedAction[]>(() => { try { return JSON.parse(window.localStorage.getItem(fieldQueueStorageKey) ?? "[]"); } catch { return []; } });
+  const syncingIds = useRef(new Set<string>());
+  const syncMutation = trpc.visits.syncField.useMutation({ onSuccess: result => { syncingIds.current.delete(result.actionId); setQueue(current => markFieldActionsSynced(current, [result.actionId])); }, onError: (_error, variables) => { syncingIds.current.delete(variables.actionId); setQueue(current => markFieldActionsFailed(current, [variables.actionId])); } });
   useEffect(() => { const onOnline = () => setOnline(true); const onOffline = () => setOnline(false); window.addEventListener("online", onOnline); window.addEventListener("offline", onOffline); return () => { window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); }; }, []);
   useEffect(() => { window.localStorage.setItem(fieldQueueStorageKey, JSON.stringify(queue)); }, [queue]);
   useEffect(() => { window.localStorage.setItem(fieldTasksStorageKey, JSON.stringify(tasks)); }, [tasks]);
-  useEffect(() => { if (online && queue.some(action => action.syncState === "PENDING")) { const pending = queue.filter(action => action.syncState === "PENDING"); const timer = window.setTimeout(() => setQueue(current => pending.some(action => action.attempts === 0) ? markFieldActionsFailed(current, pending.filter(action => action.attempts === 0).map(action => action.id)) : markFieldActionsSynced(current, pending.map(action => action.id))), 500); return () => window.clearTimeout(timer); } }, [online, queue]);
+  useEffect(() => { if (!online) return; const next = queue.find(action => action.syncState === "PENDING" && !syncingIds.current.has(action.id)); if (!next) return; syncingIds.current.add(next.id); syncMutation.mutate({ actionId: next.id, visitId: next.visitId, actionType: next.actionType }); }, [online, queue, syncMutation]);
   const actionFor = (task: FieldTaskSnapshot) => { const actionType = task.state === "ASSIGNED" || task.state === "CONFIRMED" ? "ARRIVED" : task.state === "ARRIVED" ? "IN_PROGRESS" : "COMPLETED"; const action = createFieldQueuedAction({ visitId: task.visitId, reference: task.reference, actionType }); setQueue(current => appendFieldAction(current, action)); setTasks(current => current.map(item => item.visitId === task.visitId ? { ...item, state: actionType } : item)); };
   const pendingCount = queue.filter(action => action.syncState === "PENDING").length;
   const failedActions = queue.filter(action => action.syncState === "FAILED");
