@@ -70,6 +70,19 @@ export const fieldSyncReceipts = mysqlTable("field_sync_receipts", {
   index("field_sync_receipts_visit_idx").on(table.visitId, table.createdAt),
 ]);
 
+export const fieldSyncIncidents = mysqlTable("field_sync_incidents", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull(),
+  failureCount: int("failureCount").notNull(),
+  status: mysqlEnum("status", ["OPEN", "ACKNOWLEDGED", "RESOLVED"]).default("OPEN").notNull(),
+  openedAt: timestamp("openedAt").defaultNow().notNull(),
+  acknowledgedAt: timestamp("acknowledgedAt"),
+  resolvedAt: timestamp("resolvedAt"),
+  resolvedByUserId: int("resolvedByUserId"),
+}, table => [
+  index("field_sync_incidents_clinic_status_idx").on(table.clinicId, table.status, table.openedAt),
+]);
+
 export const visitAssignments = mysqlTable("visit_assignments", {
   id: int("id").autoincrement().primaryKey(),
   visitId: int("visitId").notNull(),

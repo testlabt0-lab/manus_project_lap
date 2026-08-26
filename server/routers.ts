@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, saveReportDraft, getAuditEventDetailsForManager, getClinicVisitDurationSetting, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getManagerNotificationDeliveryPreferences, setManagerNotificationDeliveryPreference, listManagerNotificationDeliveryLogs, listManagerNotificationConsentAudits, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, listWeeklyAssignmentsForManager, recordDemoPayment, setClinicVisitDurationSetting, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, syncFieldAction, getFieldSyncMetricsForManager, transitionVisit, updateStaffAvailabilityWindow } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, saveReportDraft, getAuditEventDetailsForManager, getClinicVisitDurationSetting, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getManagerNotificationDeliveryPreferences, setManagerNotificationDeliveryPreference, listManagerNotificationDeliveryLogs, listManagerNotificationConsentAudits, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, listWeeklyAssignmentsForManager, recordDemoPayment, setClinicVisitDurationSetting, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, syncFieldAction, getFieldSyncMetricsForManager, createFieldSyncIncidentForManager, listFieldSyncIncidentsForManager, resolveFieldSyncIncidentForManager, transitionVisit, updateStaffAvailabilityWindow } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -80,6 +80,21 @@ export const appRouter = router({
       const visit = await transitionVisit({ ...input, changedByUserId: ctx.user.id });
       if (!visit) throw new TRPCError({ code: "FORBIDDEN", message: "Visit transition is not authorized for this user" });
       return visit;
+    }),
+    fieldSyncIncidents: adminProcedure.input(z.object({ clinicId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const incidents = await listFieldSyncIncidentsForManager(ctx.user.id, input.clinicId);
+      if (!incidents) throw new TRPCError({ code: "FORBIDDEN", message: "Field incidents are not available for this clinic" });
+      return incidents;
+    }),
+    openFieldSyncIncident: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), failureCount: z.number().int().min(3).max(10000) })).mutation(async ({ ctx, input }) => {
+      const incident = await createFieldSyncIncidentForManager(ctx.user.id, input.clinicId, input.failureCount);
+      if (!incident) throw new TRPCError({ code: "FORBIDDEN", message: "Field incident is not available for this clinic" });
+      return incident;
+    }),
+    resolveFieldSyncIncident: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), incidentId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveFieldSyncIncidentForManager(ctx.user.id, input.clinicId, input.incidentId);
+      if (!resolved) throw new TRPCError({ code: "FORBIDDEN", message: "Field incident is not available for this clinic" });
+      return { resolved: true };
     }),
     fieldSyncMetrics: adminProcedure.input(z.object({ clinicId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       const metrics = await getFieldSyncMetricsForManager(ctx.user.id, input.clinicId);

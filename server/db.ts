@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, like, lt, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, clinicVisitDurationSettings, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory, fieldSyncReceipts } from "../drizzle/schema";
+import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, clinicVisitDurationSettings, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory, fieldSyncReceipts, fieldSyncIncidents } from "../drizzle/schema";
 import { staffWeeklyCapacitySettings } from "../drizzle/schema";
 import { staffServiceSkills } from "../drizzle/schema";
 import { staffServiceZones } from "../drizzle/schema";
@@ -771,6 +771,37 @@ export async function syncFieldAction(input: { actionId: string; visitId: number
   if (!visit) return { actionId: input.actionId, status: "REJECTED" as const, reason: "NOT_AUTHORIZED" as const };
   await db.insert(fieldSyncReceipts).values({ actionId: input.actionId, visitId: input.visitId, actorUserId: input.changedByUserId, appliedState: input.actionType });
   return { actionId: input.actionId, status: "SYNCED" as const, appliedState: input.actionType };
+}
+
+export async function createFieldSyncIncidentForManager(managerUserId: number, clinicId: number, failureCount: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const membership = (await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
+  if (!membership) return undefined;
+  const existing = (await db.select().from(fieldSyncIncidents).where(and(eq(fieldSyncIncidents.clinicId, clinicId), eq(fieldSyncIncidents.status, "OPEN"))).limit(1))[0];
+  if (existing) {
+    await db.update(fieldSyncIncidents).set({ failureCount }).where(eq(fieldSyncIncidents.id, existing.id));
+    return { ...existing, failureCount };
+  }
+  const result = await db.insert(fieldSyncIncidents).values({ clinicId, failureCount, status: "OPEN" });
+  return { id: Number(result[0].insertId), clinicId, failureCount, status: "OPEN" as const };
+}
+
+export async function listFieldSyncIncidentsForManager(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const membership = (await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
+  if (!membership) return undefined;
+  return db.select().from(fieldSyncIncidents).where(eq(fieldSyncIncidents.clinicId, clinicId)).orderBy(desc(fieldSyncIncidents.openedAt)).limit(20);
+}
+
+export async function resolveFieldSyncIncidentForManager(managerUserId: number, clinicId: number, incidentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const membership = (await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
+  if (!membership) return undefined;
+  const result = await db.update(fieldSyncIncidents).set({ status: "RESOLVED", resolvedAt: new Date(), resolvedByUserId: managerUserId }).where(and(eq(fieldSyncIncidents.id, incidentId), eq(fieldSyncIncidents.clinicId, clinicId)));
+  return result[0].affectedRows > 0;
 }
 
 export async function getFieldSyncMetricsForManager(managerUserId: number, clinicId: number) {
