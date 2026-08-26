@@ -16,13 +16,13 @@ function context(role: "admin" | "user"): TrpcContext {
 
 describe("visit duration routes", () => {
   it("reads and saves an allowed clinic duration through the administrator identity", async () => {
-    mocks.getClinicVisitDurationSetting.mockResolvedValue({ clinicId: 2, clinicName: "عيادة تجريبية", durationMinutes: 60 });
-    mocks.setClinicVisitDurationSetting.mockResolvedValue({ clinicId: 2, clinicName: "عيادة تجريبية", durationMinutes: 90 });
+    mocks.getClinicVisitDurationSetting.mockResolvedValue({ clinicId: 2, clinicName: "عيادة تجريبية", durationMinutes: 60, transitionBufferMinutes: 0 });
+    mocks.setClinicVisitDurationSetting.mockResolvedValue({ clinicId: 2, clinicName: "عيادة تجريبية", durationMinutes: 90, transitionBufferMinutes: 15 });
     const caller = appRouter.createCaller(context("admin"));
     await expect(caller.visitDuration.get({ clinicId: 2 })).resolves.toMatchObject({ durationMinutes: 60 });
-    await expect(caller.visitDuration.set({ clinicId: 2, durationMinutes: 90 })).resolves.toMatchObject({ durationMinutes: 90 });
+    await expect(caller.visitDuration.set({ clinicId: 2, durationMinutes: 90, transitionBufferMinutes: 15 })).resolves.toMatchObject({ durationMinutes: 90, transitionBufferMinutes: 15 });
     expect(mocks.getClinicVisitDurationSetting).toHaveBeenCalledWith(91, 2);
-    expect(mocks.setClinicVisitDurationSetting).toHaveBeenCalledWith(91, 2, 90);
+    expect(mocks.setClinicVisitDurationSetting).toHaveBeenCalledWith(91, 2, 90, 15);
   });
 
   it("rejects duration settings for a non-administrator", async () => {

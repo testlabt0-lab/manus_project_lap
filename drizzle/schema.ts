@@ -156,6 +156,7 @@ export const clinicVisitDurationSettings = mysqlTable("clinic_visit_duration_set
   id: int("id").autoincrement().primaryKey(),
   clinicId: int("clinicId").notNull(),
   durationMinutes: int("durationMinutes").notNull().default(60),
+  transitionBufferMinutes: int("transitionBufferMinutes").notNull().default(0),
   updatedByUserId: int("updatedByUserId").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

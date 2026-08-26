@@ -113,8 +113,8 @@ export const appRouter = router({
       if (!setting) throw new TRPCError({ code: "FORBIDDEN", message: "Visit duration cannot be read for this clinic" });
       return setting;
     }),
-    set: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), durationMinutes: z.union([z.literal(30), z.literal(45), z.literal(60), z.literal(90), z.literal(120)]) })).mutation(async ({ ctx, input }) => {
-      const setting = await setClinicVisitDurationSetting(ctx.user.id, input.clinicId, input.durationMinutes);
+    set: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), durationMinutes: z.union([z.literal(30), z.literal(45), z.literal(60), z.literal(90), z.literal(120)]), transitionBufferMinutes: z.union([z.literal(0), z.literal(15), z.literal(30), z.literal(45), z.literal(60)]).optional() })).mutation(async ({ ctx, input }) => {
+      const setting = await setClinicVisitDurationSetting(ctx.user.id, input.clinicId, input.durationMinutes, input.transitionBufferMinutes);
       if (!setting) throw new TRPCError({ code: "FORBIDDEN", message: "Visit duration cannot be updated for this clinic" });
       return setting;
     }),

@@ -12,4 +12,9 @@ describe("visit assignment conflict policy", () => {
     expect(findConflictingAssignedVisit(existing, 9, new Date("2026-08-27T10:00:00.000Z"))).toBeUndefined();
     expect(findConflictingAssignedVisit([{ ...existing[0], state: "COMPLETED" }], 9, new Date("2026-08-27T09:30:00.000Z"))).toBeUndefined();
   });
+
+  it("requires the configured transition buffer between two active visits", () => {
+    expect(findConflictingAssignedVisit(existing, 9, new Date("2026-08-27T10:10:00.000Z"), 60, 15)).toMatchObject({ id: 4 });
+    expect(findConflictingAssignedVisit(existing, 9, new Date("2026-08-27T10:15:00.000Z"), 60, 15)).toBeUndefined();
+  });
 });

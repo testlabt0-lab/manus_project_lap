@@ -41,7 +41,7 @@ import { DEMO_VISIT } from "../../../shared/mockData";
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/medicare-pro-web-visit-duration-settings_7d7db61c.zip";
+const PACKAGE_URL = "/manus-storage/medicare-pro-web-transition-buffer_508bde2b.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";
