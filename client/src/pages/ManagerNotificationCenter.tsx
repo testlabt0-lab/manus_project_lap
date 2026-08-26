@@ -43,6 +43,8 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   const thresholdLastChange = trpc.notifications.thresholdLastChange.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
   const thresholdChangeHistory = trpc.notifications.thresholdChangeHistory.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
   const analyticsSnapshots = trpc.notifications.analyticsSnapshotHistory.useQuery({ clinicId: selectedClinicId ?? 1, limit: 5 }, { enabled: isAuthenticated && selectedClinicId !== null });
+  const deliveryPreferences = trpc.notifications.deliveryPreferences.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
+  const deliveryLogs = trpc.notifications.deliveryLogs.useQuery({ clinicId: selectedClinicId ?? 1 }, { enabled: isAuthenticated && selectedClinicId !== null });
   const thresholdAlert = trpc.notifications.responseThresholdAlert.useQuery({ days: reportDays, minimumAcknowledgementRate, clinicId: selectedClinicId ?? undefined }, { enabled: isAuthenticated });
   const [filter, setFilter] = useState<ManagerNotificationFilter>("ALL");
   const [sort, setSort] = useState<ManagerNotificationSort>("PENDING_FIRST");
@@ -91,6 +93,10 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
       utils.audit.listOperations.invalidate();
     },
     onError: () => toast.error("تعذر حفظ عتبة التأكيد."),
+  });
+  const saveDeliveryPreference = trpc.notifications.setDeliveryPreference.useMutation({
+    onSuccess: () => { toast.success("تم تحديث تفضيل قناة التواصل التجريبية."); utils.notifications.deliveryPreferences.invalidate(); utils.notifications.deliveryLogs.invalidate(); },
+    onError: () => toast.error("تعذر تحديث تفضيل القناة للعيادة المحددة."),
   });
   const captureAnalyticsSnapshot = trpc.notifications.captureAnalyticsSnapshot.useMutation({
     onSuccess: snapshot => {
@@ -160,6 +166,12 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
       {!analyticsSnapshots.isLoading && (analyticsSnapshots.data?.length ?? 0) > 0 && <div className="mt-4 overflow-x-auto rounded-xl border border-[#dce9e4]"><table className="w-full min-w-[680px] text-right text-xs"><thead className="bg-[#f5faf8] text-[#527169]"><tr><th className="px-3 py-2 font-semibold">العيادة</th><th className="px-3 py-2 font-semibold">الفترة</th><th className="px-3 py-2 font-semibold">الإجمالي</th><th className="px-3 py-2 font-semibold">المؤكدة</th><th className="px-3 py-2 font-semibold">نسبة التأكيد</th><th className="px-3 py-2 font-semibold">وقت الحفظ</th></tr></thead><tbody>{analyticsSnapshots.data?.map(snapshot => <tr key={snapshot.id} className="border-t border-[#e7f0ec]"><td className="px-3 py-2 text-[#31584f]">{snapshot.clinicName}</td><td className="px-3 py-2 text-[#527169]">{snapshot.periodDays} يوماً</td><td className="px-3 py-2 text-[#527169]">{snapshot.total}</td><td className="px-3 py-2 text-[#527169]">{snapshot.acknowledged}</td><td className="px-3 py-2 font-semibold text-[#31584f]">{snapshot.acknowledgementRate}%</td><td className="px-3 py-2 text-[#527169]">{new Date(snapshot.capturedAt).toLocaleString("ar-SA")}</td></tr>)}</tbody></table></div>}
     </section>
 
+    <section className="panel mt-5" aria-labelledby="delivery-preferences-title">
+      <div className="section-head"><div><h2 id="delivery-preferences-title" className="section-title">تفضيلات التواصل خارج التطبيق</h2><p className="section-copy">تُحفظ التفضيلات على مستوى المدير والعيادة. الإرسال الخارجي معطل في البيئة التجريبية، لذلك تسجل التغييرات حالات محاكاة فقط.</p></div><label className="field-label text-xs">العيادة<select className="field-input mt-1 min-w-36" value={selectedClinicId ?? ""} disabled={!managedClinics.data?.length} onChange={event => setSelectedClinicId(Number(event.target.value))}>{managedClinics.data?.map(clinic => <option key={clinic.clinicId} value={clinic.clinicId}>{clinic.clinicName}</option>)}</select></label></div>
+      <div className="grid gap-3 md:grid-cols-3">{deliveryPreferences.data?.preferences.map(preference => <label key={preference.channel} className="flex items-center justify-between rounded-2xl border border-[#dbe9e4] bg-[#fbfefd] p-4 text-sm text-[#31584f]"><span>{preference.channel === "IN_APP" ? "داخل التطبيق" : preference.channel === "EMAIL" ? "البريد الإلكتروني" : "الرسائل النصية SMS"}</span><input type="checkbox" checked={preference.enabled} disabled={selectedClinicId === null || saveDeliveryPreference.isPending} onChange={event => selectedClinicId !== null && saveDeliveryPreference.mutate({ clinicId: selectedClinicId, channel: preference.channel, enabled: event.target.checked })}/></label>)}</div>
+      <div className="mt-4 rounded-2xl bg-[#f5faf8] p-4 text-xs leading-6 text-[#6b867e]">لا يتم تخزين بريد إلكتروني أو رقم هاتف في هذا المسار. ستحتاج النسخة الإنتاجية إلى مزود معتمد وموافقة صريحة قبل تفعيل الإرسال.</div>
+      {(deliveryLogs.data?.length ?? 0) > 0 && <div className="mt-4 overflow-x-auto rounded-xl border border-[#dce9e4]"><table className="w-full min-w-[640px] text-right text-xs"><thead className="bg-[#f5faf8] text-[#527169]"><tr><th className="px-3 py-2">القناة</th><th className="px-3 py-2">نوع الإشعار</th><th className="px-3 py-2">الحالة</th><th className="px-3 py-2">الوقت</th></tr></thead><tbody>{deliveryLogs.data?.map(log => <tr key={log.id} className="border-t border-[#e7f0ec]"><td className="px-3 py-2">{log.channel}</td><td className="px-3 py-2">{log.notificationType}</td><td className="px-3 py-2">{log.status === "SIMULATED" ? "محاكاة" : "معطل"}</td><td className="px-3 py-2">{new Date(log.createdAt).toLocaleString("ar-SA")}</td></tr>)}</tbody></table></div>}
+    </section>
     <section className="panel mt-5" aria-labelledby="response-threshold-title">
       <div className="section-head">
         <div>

@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   finalizeReport: vi.fn(),
   saveReportDraft: vi.fn(),
+  getManagerNotificationDeliveryPreferences: vi.fn(),
+  setManagerNotificationDeliveryPreference: vi.fn(),
+  listManagerNotificationDeliveryLogs: vi.fn(),
   recordDemoPayment: vi.fn(),
 }));
 
@@ -12,6 +15,9 @@ vi.mock("./db", () => ({
   ensureDemoClinicianForOperationalClinic: vi.fn(),
   finalizeReport: mocks.finalizeReport,
   saveReportDraft: mocks.saveReportDraft,
+  getManagerNotificationDeliveryPreferences: mocks.getManagerNotificationDeliveryPreferences,
+  setManagerNotificationDeliveryPreference: mocks.setManagerNotificationDeliveryPreference,
+  listManagerNotificationDeliveryLogs: mocks.listManagerNotificationDeliveryLogs,
   getInvoiceForPatient: vi.fn(),
   getReportForPatient: vi.fn(),
   getVisitById: vi.fn(),
@@ -28,11 +34,25 @@ vi.mock("./db", () => ({
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 
-function userContext(id: number): TrpcContext {
-  return { user: { id, openId: `user-${id}`, name: "مستخدم تجريبي", email: `user-${id}@example.test`, loginMethod: "test", role: "user", createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() }, req: {} as TrpcContext["req"], res: {} as TrpcContext["res"] };
+function userContext(id: number, role: "user" | "admin" = "user"): TrpcContext {
+  return { user: { id, openId: `user-${id}`, name: "مستخدم تجريبي", email: `user-${id}@example.test`, loginMethod: "test", role, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() }, req: {} as TrpcContext["req"], res: {} as TrpcContext["res"] };
 }
 
 describe("output mutations", () => {
+  it("enforces manager-scoped delivery preference reads", async () => {
+    mocks.getManagerNotificationDeliveryPreferences.mockResolvedValue({ clinicId: 4, clinicName: "عيادة تجريبية", preferences: [{ channel: "IN_APP", enabled: true }, { channel: "EMAIL", enabled: false }, { channel: "SMS", enabled: false }] });
+    const caller = appRouter.createCaller(userContext(31, "admin"));
+    await expect(caller.notifications.deliveryPreferences({ clinicId: 4 })).resolves.toMatchObject({ clinicId: 4 });
+    expect(mocks.getManagerNotificationDeliveryPreferences).toHaveBeenCalledWith(31, 4);
+  });
+
+  it("passes channel preference changes to the protected delivery procedure", async () => {
+    mocks.setManagerNotificationDeliveryPreference.mockResolvedValue({ clinicId: 4, clinicName: "عيادة تجريبية", channel: "EMAIL", enabled: true });
+    const caller = appRouter.createCaller(userContext(32, "admin"));
+    await expect(caller.notifications.setDeliveryPreference({ clinicId: 4, channel: "EMAIL", enabled: true })).resolves.toMatchObject({ enabled: true });
+    expect(mocks.setManagerNotificationDeliveryPreference).toHaveBeenCalledWith(32, 4, "EMAIL", true);
+  });
+
   it("passes the template and clinician identity to draft saving", async () => {
     mocks.saveReportDraft.mockResolvedValue({ id: 6, visitId: 22, templateCode: "NURSING_FOLLOW_UP", status: "DRAFT", summary: "مسودة تجريبية." });
     const caller = appRouter.createCaller(userContext(31));

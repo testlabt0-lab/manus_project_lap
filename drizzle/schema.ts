@@ -1,4 +1,4 @@
-import { index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { boolean, index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 import { staffSkillCodes } from "../shared/staffSkills";
 import { staffServiceZoneCodes } from "../shared/staffServiceZones";
 
@@ -125,6 +125,32 @@ export const managerNotificationPreferences = mysqlTable("manager_notification_p
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [
   uniqueIndex("manager_notification_preferences_manager_clinic_unique").on(table.managerUserId, table.clinicId),
+]);
+
+export const notificationDeliveryChannels = ["IN_APP", "EMAIL", "SMS"] as const;
+export const notificationDeliveryStatuses = ["SIMULATED", "SKIPPED", "DISABLED"] as const;
+
+export const managerNotificationDeliveryPreferences = mysqlTable("manager_notification_delivery_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  managerUserId: int("managerUserId").notNull(),
+  clinicId: int("clinicId").notNull(),
+  channel: mysqlEnum("channel", notificationDeliveryChannels).notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("manager_notification_delivery_preferences_unique").on(table.managerUserId, table.clinicId, table.channel),
+]);
+
+export const notificationDeliveryLogs = mysqlTable("notification_delivery_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  managerUserId: int("managerUserId").notNull(),
+  clinicId: int("clinicId").notNull(),
+  channel: mysqlEnum("channel", notificationDeliveryChannels).notNull(),
+  notificationType: varchar("notificationType", { length: 40 }).notNull(),
+  status: mysqlEnum("status", notificationDeliveryStatuses).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("notification_delivery_logs_manager_clinic_created_idx").on(table.managerUserId, table.clinicId, table.createdAt),
 ]);
 
 export const managerNotificationAnalyticsSnapshots = mysqlTable("manager_notification_analytics_snapshots", {

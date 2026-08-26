@@ -42,7 +42,7 @@ import { clinicalReportTemplateCodes, clinicalReportTemplateLabels, clinicalRepo
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/medicare-pro-web-clinical-reports_b33ee77a.zip";
+const PACKAGE_URL = "/manus-storage/medicare-pro-web-notification-p2_00c9a159.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";

@@ -17,6 +17,7 @@ import { getOverdueVisitAlerts } from "./alertPolicy";
 import { buildVisitCreatedNotification, buildVisitStatusNotification } from "./patientNotificationPolicy";
 import { buildNotificationResponseComparison, buildNotificationResponseReport, buildNotificationResponseThresholdAlert, buildNotificationResponseTrend } from "./notificationResponsePolicy";
 import { clinicalReportTemplateCodes, type ClinicalReportTemplateCode } from "../shared/clinicalReports";
+import { managerNotificationDeliveryPreferences, notificationDeliveryChannels, notificationDeliveryLogs } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -243,6 +244,34 @@ export async function setVisitServiceZone(managerUserId: number, visitId: number
   if (!managerMembership) return undefined;
   await db.update(visits).set({ serviceZone }).where(eq(visits.id, visitId));
   return { visitId, serviceZone };
+}
+
+export async function getManagerNotificationDeliveryPreferences(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [membership] = await db.select({ clinicId: clinicMemberships.clinicId, clinicName: clinicMemberships.clinicName }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1);
+  if (!membership) return undefined;
+  const rows = await db.select({ channel: managerNotificationDeliveryPreferences.channel, enabled: managerNotificationDeliveryPreferences.enabled }).from(managerNotificationDeliveryPreferences).where(and(eq(managerNotificationDeliveryPreferences.managerUserId, managerUserId), eq(managerNotificationDeliveryPreferences.clinicId, clinicId)));
+  return { clinicId, clinicName: membership.clinicName, preferences: notificationDeliveryChannels.map(channel => ({ channel, enabled: rows.find(row => row.channel === channel)?.enabled ?? false })) };
+}
+
+export async function setManagerNotificationDeliveryPreference(managerUserId: number, clinicId: number, channel: (typeof notificationDeliveryChannels)[number], enabled: boolean) {
+  if (!notificationDeliveryChannels.includes(channel)) return undefined;
+  const db = await getDb();
+  if (!db) return undefined;
+  const [membership] = await db.select({ clinicName: clinicMemberships.clinicName }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1);
+  if (!membership) return undefined;
+  await db.insert(managerNotificationDeliveryPreferences).values({ managerUserId, clinicId, channel, enabled }).onDuplicateKeyUpdate({ set: { enabled, updatedAt: new Date() } });
+  await db.insert(notificationDeliveryLogs).values({ managerUserId, clinicId, channel, notificationType: "OVERDUE_VISIT", status: enabled ? "SIMULATED" : "DISABLED" });
+  return { clinicId, clinicName: membership.clinicName, channel, enabled };
+}
+
+export async function listManagerNotificationDeliveryLogs(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [membership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1);
+  if (!membership) return undefined;
+  return db.select({ id: notificationDeliveryLogs.id, channel: notificationDeliveryLogs.channel, notificationType: notificationDeliveryLogs.notificationType, status: notificationDeliveryLogs.status, createdAt: notificationDeliveryLogs.createdAt }).from(notificationDeliveryLogs).where(and(eq(notificationDeliveryLogs.managerUserId, managerUserId), eq(notificationDeliveryLogs.clinicId, clinicId))).orderBy(desc(notificationDeliveryLogs.createdAt)).limit(20);
 }
 
 export async function listManagedNotificationClinics(managerUserId: number) {
