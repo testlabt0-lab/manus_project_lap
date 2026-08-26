@@ -106,6 +106,13 @@
       "when": 1787738214737,
       "tag": "0014_slim_wolfpack",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1787742944546,
+      "tag": "0015_clammy_legion",
+      "breakpoints": true
     }
   ]
 }

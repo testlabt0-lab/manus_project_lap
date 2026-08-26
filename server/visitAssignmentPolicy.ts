@@ -1,4 +1,6 @@
-export const VISIT_ASSIGNMENT_DURATION_MINUTES = 60;
+export const DEFAULT_VISIT_DURATION_MINUTES = 60;
+export const visitDurationOptions = [30, 45, 60, 90, 120] as const;
+export type VisitDurationMinutes = (typeof visitDurationOptions)[number];
 
 export type AssignedVisitCandidate = {
   id: number;
@@ -9,17 +11,17 @@ export type AssignedVisitCandidate = {
 
 const blockingAssignmentStates = new Set(["ASSIGNED", "CONFIRMED", "EN_ROUTE", "ARRIVED", "IN_PROGRESS"]);
 
-export function getVisitAssignmentEnd(startAt: Date | string) {
-  return new Date(new Date(startAt).getTime() + VISIT_ASSIGNMENT_DURATION_MINUTES * 60 * 1000);
+export function getVisitAssignmentEnd(startAt: Date | string, durationMinutes = DEFAULT_VISIT_DURATION_MINUTES) {
+  return new Date(new Date(startAt).getTime() + durationMinutes * 60 * 1000);
 }
 
-export function findConflictingAssignedVisit(candidates: AssignedVisitCandidate[], candidateVisitId: number, candidateStartAt: Date | string) {
+export function findConflictingAssignedVisit(candidates: AssignedVisitCandidate[], candidateVisitId: number, candidateStartAt: Date | string, durationMinutes = DEFAULT_VISIT_DURATION_MINUTES) {
   const candidateStart = new Date(candidateStartAt);
-  const candidateEnd = getVisitAssignmentEnd(candidateStart);
+  const candidateEnd = getVisitAssignmentEnd(candidateStart, durationMinutes);
   return candidates.find(candidate => {
     if (candidate.id === candidateVisitId || !blockingAssignmentStates.has(candidate.state)) return false;
     const existingStart = new Date(candidate.scheduledStart);
-    const existingEnd = getVisitAssignmentEnd(existingStart);
+    const existingEnd = getVisitAssignmentEnd(existingStart, durationMinutes);
     return existingStart < candidateEnd && existingEnd > candidateStart;
   });
 }

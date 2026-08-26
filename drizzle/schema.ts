@@ -152,6 +152,17 @@ export const staffAvailabilityWindows = mysqlTable("staff_availability_windows",
   index("staff_availability_staff_start_idx").on(table.staffUserId, table.startAt),
 ]);
 
+export const clinicVisitDurationSettings = mysqlTable("clinic_visit_duration_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull(),
+  durationMinutes: int("durationMinutes").notNull().default(60),
+  updatedByUserId: int("updatedByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("clinic_visit_duration_settings_clinic_unique").on(table.clinicId),
+]);
+
 export const medicalReports = mysqlTable("medical_reports", {
   id: int("id").autoincrement().primaryKey(),
   visitId: int("visitId").notNull().unique(),

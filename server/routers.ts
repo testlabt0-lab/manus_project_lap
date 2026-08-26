@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit, updateStaffAvailabilityWindow } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getClinicVisitDurationSetting, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setClinicVisitDurationSetting, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit, updateStaffAvailabilityWindow } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -105,6 +105,18 @@ export const appRouter = router({
     cancel: adminProcedure.input(z.object({ availabilityWindowId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       if (!await cancelStaffAvailabilityWindow(ctx.user.id, input.availabilityWindowId)) throw new TRPCError({ code: "FORBIDDEN", message: "Staff availability cannot be cancelled by this user" });
       return { success: true };
+    }),
+  }),
+  visitDuration: router({
+    get: adminProcedure.input(z.object({ clinicId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const setting = await getClinicVisitDurationSetting(ctx.user.id, input.clinicId);
+      if (!setting) throw new TRPCError({ code: "FORBIDDEN", message: "Visit duration cannot be read for this clinic" });
+      return setting;
+    }),
+    set: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), durationMinutes: z.union([z.literal(30), z.literal(45), z.literal(60), z.literal(90), z.literal(120)]) })).mutation(async ({ ctx, input }) => {
+      const setting = await setClinicVisitDurationSetting(ctx.user.id, input.clinicId, input.durationMinutes);
+      if (!setting) throw new TRPCError({ code: "FORBIDDEN", message: "Visit duration cannot be updated for this clinic" });
+      return setting;
     }),
   }),
   audit: router({

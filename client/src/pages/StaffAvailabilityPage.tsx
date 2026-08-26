@@ -25,11 +25,16 @@ export function StaffAvailabilityPage({ navigate }: { navigate: (to: string) => 
   const [endAt, setEndAt] = useState("");
   const [weekOffset, setWeekOffset] = useState(0);
   const [editingWindowId, setEditingWindowId] = useState<number | null>(null);
+  const [durationMinutes, setDurationMinutes] = useState("60");
   const windows = trpc.staffAvailability.list.useQuery({ clinicId: clinicId ?? 1 }, { enabled: isAuthenticated && clinicId !== null });
+  const visitDuration = trpc.visitDuration.get.useQuery({ clinicId: clinicId ?? 1 }, { enabled: isAuthenticated && clinicId !== null });
 
   useEffect(() => {
     if (clinicId === null && clinics.data?.[0]) setClinicId(clinics.data[0].clinicId);
   }, [clinicId, clinics.data]);
+  useEffect(() => {
+    if (visitDuration.data) setDurationMinutes(String(visitDuration.data.durationMinutes));
+  }, [visitDuration.data]);
 
   const clinicStaff = useMemo(() => staff.data?.filter(member => member.clinicId === clinicId) ?? [], [clinicId, staff.data]);
   const clinicRequestedVisits = useMemo(() => operationalVisits.data?.filter(visit => visit.clinicId === clinicId && visit.state === "REQUESTED") ?? [], [clinicId, operationalVisits.data]);
@@ -63,6 +68,10 @@ export function StaffAvailabilityPage({ navigate }: { navigate: (to: string) => 
     onSuccess: () => { toast.success("تم إلغاء فترة التوافر."); refreshWindows(); },
     onError: () => toast.error("تعذر إلغاء فترة التوافر ضمن نطاق العيادة."),
   });
+  const updateVisitDuration = trpc.visitDuration.set.useMutation({
+    onSuccess: setting => { setDurationMinutes(String(setting.durationMinutes)); toast.success("تم حفظ مدة الزيارة للعيادة المختارة."); utils.visitDuration.get.invalidate(); utils.visits.assignmentAvailability.invalidate(); },
+    onError: () => toast.error("تعذر حفظ مدة الزيارة ضمن نطاق العيادة."),
+  });
 
   const submit = () => {
     const start = new Date(startAt); const end = new Date(endAt);
@@ -76,6 +85,7 @@ export function StaffAvailabilityPage({ navigate }: { navigate: (to: string) => 
   const isSaving = createWindow.isPending || updateWindow.isPending;
   return <main className="shell page-wrap">
     <div className="page-header"><div><h1>توافر الفريق</h1><p>سجّل فترات عمل الفريق داخل العيادة، وتحقق من توافق الموعد قبل تكليف الزيارة.</p></div><button className="outline-btn" onClick={() => navigate("/operations")}>لوحة التشغيل</button></div>
+    <section className="panel mt-5"><div className="section-head"><div><h2 className="section-title">مدة الزيارة التشغيلية</h2><p className="section-copy">تطبق المدة على معاينة توافر العضو ومنع تداخل تكليفاته داخل العيادة المختارة فقط.</p></div><span className="badge">إعداد العيادة</span></div><div className="mt-5 flex flex-wrap items-end gap-3"><label className="field-label min-w-56">مدة الزيارة<select className="field-input mt-2" value={durationMinutes} disabled={visitDuration.isLoading || updateVisitDuration.isPending || clinicId === null} onChange={event => setDurationMinutes(event.target.value)}><option value="30">30 دقيقة</option><option value="45">45 دقيقة</option><option value="60">60 دقيقة</option><option value="90">90 دقيقة</option><option value="120">120 دقيقة</option></select></label><button className="primary-btn" disabled={updateVisitDuration.isPending || clinicId === null || visitDuration.isLoading} onClick={() => updateVisitDuration.mutate({ clinicId: clinicId!, durationMinutes: Number(durationMinutes) as 30 | 45 | 60 | 90 | 120 })}>{updateVisitDuration.isPending ? "جارٍ الحفظ…" : "حفظ المدة"}</button>{visitDuration.isError && <p className="text-sm text-[#9a5e16]">تعذر تحميل إعداد المدة لهذه العيادة.</p>}<span className="text-xs leading-6 text-[#6b867e]">النموذج لا يضيف مهلة انتقال بين الزيارات بعد.</span></div></section>
     <section className="panel"><div className="section-head"><div><h2 className="section-title">{editingWindowId ? "تعديل فترة توافر" : "إضافة فترة توافر"}</h2><p className="section-copy">لا يقبل الخادم إلا عضواً نشطاً من نوع ممارس أو تمريض ضمن العيادة التي يديرها الحساب، ويمنع تداخل الفترات النشطة للعضو نفسه.</p></div><CalendarClock className="text-[#0b776b]" size={24}/></div>
       <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4"><label className="field-label">العيادة<select className="field-input mt-2" value={clinicId ?? ""} disabled={Boolean(editingWindowId) || clinics.isLoading || !clinics.data?.length} onChange={event => setClinicId(Number(event.target.value))}>{clinics.data?.map(clinic => <option key={clinic.clinicId} value={clinic.clinicId}>{clinic.clinicName}</option>)}</select></label><label className="field-label">عضو الفريق<select className="field-input mt-2" value={staffUserId} disabled={Boolean(editingWindowId) || staff.isLoading || clinicId === null} onChange={event => setStaffUserId(event.target.value)}><option value="">اختر عضواً نشطاً</option>{clinicStaff.map(member => <option key={`${member.clinicId}-${member.userId}`} value={member.userId}>{member.displayName} — {member.memberRole === "CLINICIAN" ? "ممارس" : "تمريض"}</option>)}</select></label><label className="field-label">بداية التوافر<input className="field-input mt-2" type="datetime-local" value={startAt} onChange={event => setStartAt(event.target.value)}/></label><label className="field-label">نهاية التوافر<input className="field-input mt-2" type="datetime-local" value={endAt} onChange={event => setEndAt(event.target.value)}/></label></div>
       <div className="mt-5 flex flex-wrap items-center gap-3"><button className="primary-btn" disabled={isSaving || clinicId === null || !staffUserId || !startAt || !endAt} onClick={submit}>{isSaving ? "جارٍ الحفظ…" : editingWindowId ? "حفظ التعديل" : "حفظ فترة التوافر"}</button>{editingWindowId && <button className="outline-btn" disabled={isSaving} onClick={resetForm}>إلغاء التعديل</button>}<span className="text-xs leading-6 text-[#6b867e]">لا ترسل هذه النسخة رسالة أو إشعاراً خارج التطبيق، ولا تسجل معلومات مرضى.</span></div>

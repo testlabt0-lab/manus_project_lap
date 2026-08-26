@@ -1,10 +1,10 @@
 import { and, desc, eq, gte, inArray, like, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, clinicVisitDurationSettings, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { hasAvailabilityOverlap } from "./staffAvailabilityPolicy";
-import { findConflictingAssignedVisit, VISIT_ASSIGNMENT_DURATION_MINUTES } from "./visitAssignmentPolicy";
+import { DEFAULT_VISIT_DURATION_MINUTES, findConflictingAssignedVisit, visitDurationOptions, type VisitDurationMinutes } from "./visitAssignmentPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { buildVisitCreatedNotification, buildVisitStatusNotification } from "./patientNotificationPolicy";
 import { buildNotificationResponseComparison, buildNotificationResponseReport, buildNotificationResponseThresholdAlert, buildNotificationResponseTrend } from "./notificationResponsePolicy";
@@ -394,15 +394,36 @@ export async function getVisitAssignmentAvailability(managerUserId: number, visi
   if (!managerMembership) return undefined;
   const [staffMembership] = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, staffUserId), eq(clinicMemberships.clinicId, visit.clinicId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"]))).limit(1);
   if (!staffMembership) return undefined;
+  const [durationSetting] = await db.select({ durationMinutes: clinicVisitDurationSettings.durationMinutes }).from(clinicVisitDurationSettings).where(eq(clinicVisitDurationSettings.clinicId, visit.clinicId)).limit(1);
+  const durationMinutes = (durationSetting?.durationMinutes ?? DEFAULT_VISIT_DURATION_MINUTES) as VisitDurationMinutes;
   const windows = await db.select().from(staffAvailabilityWindows).where(and(eq(staffAvailabilityWindows.clinicId, visit.clinicId), eq(staffAvailabilityWindows.staffUserId, staffUserId))).orderBy(desc(staffAvailabilityWindows.startAt)).limit(30);
   const activeWindows = windows.filter(window => !window.cancelledAt);
   const visitStart = new Date(visit.scheduledStart);
-  const visitEnd = new Date(visitStart.getTime() + VISIT_ASSIGNMENT_DURATION_MINUTES * 60 * 1000);
+  const visitEnd = new Date(visitStart.getTime() + durationMinutes * 60 * 1000);
   const isCovered = activeWindows.some(window => new Date(window.startAt) <= visitStart && new Date(window.endAt) >= visitEnd);
   const assignedVisits = await db.select({ id: visits.id, reference: visits.reference, scheduledStart: visits.scheduledStart, state: visits.state }).from(visitAssignments).innerJoin(visits, eq(visitAssignments.visitId, visits.id)).where(and(eq(visitAssignments.assigneeUserId, staffUserId), eq(visits.clinicId, visit.clinicId)));
-  const conflictingVisit = findConflictingAssignedVisit(assignedVisits, visit.id, visitStart);
+  const conflictingVisit = findConflictingAssignedVisit(assignedVisits, visit.id, visitStart, durationMinutes);
   const availabilityStatus = activeWindows.length === 0 ? "NOT_CONFIGURED" as const : isCovered ? "AVAILABLE" as const : "OUTSIDE_AVAILABILITY" as const;
-  return { visitId: visit.id, clinicId: visit.clinicId, visitReference: visit.reference, scheduledStart: visitStart, durationMinutes: VISIT_ASSIGNMENT_DURATION_MINUTES, status: conflictingVisit ? "ASSIGNMENT_CONFLICT" as const : availabilityStatus, conflictingVisitReference: conflictingVisit?.reference };
+  return { visitId: visit.id, clinicId: visit.clinicId, visitReference: visit.reference, scheduledStart: visitStart, durationMinutes, status: conflictingVisit ? "ASSIGNMENT_CONFLICT" as const : availabilityStatus, conflictingVisitReference: conflictingVisit?.reference };
+}
+
+export async function getClinicVisitDurationSetting(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [membership] = await db.select({ clinicId: clinicMemberships.clinicId, clinicName: clinicMemberships.clinicName }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  if (!membership) return undefined;
+  const [setting] = await db.select({ durationMinutes: clinicVisitDurationSettings.durationMinutes }).from(clinicVisitDurationSettings).where(eq(clinicVisitDurationSettings.clinicId, clinicId)).limit(1);
+  return { clinicId, clinicName: membership.clinicName, durationMinutes: (setting?.durationMinutes ?? DEFAULT_VISIT_DURATION_MINUTES) as VisitDurationMinutes };
+}
+
+export async function setClinicVisitDurationSetting(managerUserId: number, clinicId: number, durationMinutes: VisitDurationMinutes) {
+  if (!visitDurationOptions.includes(durationMinutes)) return undefined;
+  const setting = await getClinicVisitDurationSetting(managerUserId, clinicId);
+  if (!setting) return undefined;
+  const db = await getDb();
+  if (!db) return undefined;
+  await db.insert(clinicVisitDurationSettings).values({ clinicId, durationMinutes, updatedByUserId: managerUserId }).onDuplicateKeyUpdate({ set: { durationMinutes, updatedByUserId: managerUserId, updatedAt: new Date() } });
+  return { ...setting, durationMinutes };
 }
 
 export async function listAuditEventsForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date; query?: string; clinicId?: number } = {}) {
