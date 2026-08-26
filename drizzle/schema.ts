@@ -1,5 +1,6 @@
 import { index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 import { staffSkillCodes } from "../shared/staffSkills";
+import { staffServiceZoneCodes } from "../shared/staffServiceZones";
 
 /**
  * Core user table backing auth flow.
@@ -36,6 +37,7 @@ export const visits = mysqlTable("visits", {
   clinicName: varchar("clinicName", { length: 160 }).notNull(),
   serviceName: varchar("serviceName", { length: 160 }).notNull(),
   requiredStaffSkill: mysqlEnum("requiredStaffSkill", staffSkillCodes).notNull().default("GENERAL_HOME_VISIT"),
+  serviceZone: mysqlEnum("serviceZone", staffServiceZoneCodes).notNull().default("CENTRAL"),
   districtLabel: varchar("districtLabel", { length: 180 }).notNull(),
   scheduledStart: timestamp("scheduledStart").notNull(),
   state: mysqlEnum("state", visitStates).default("REQUESTED").notNull(),
@@ -264,5 +266,17 @@ export const staffServiceSkills = mysqlTable("staff_service_skills", {
 }, table => [
   uniqueIndex("staff_service_skills_clinic_staff_skill_unique").on(table.clinicId, table.staffUserId, table.skillCode),
   index("staff_service_skills_clinic_staff_idx").on(table.clinicId, table.staffUserId),
+]);
+
+export const staffServiceZones = mysqlTable("staff_service_zones", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull(),
+  staffUserId: int("staffUserId").notNull(),
+  zoneCode: mysqlEnum("zoneCode", staffServiceZoneCodes).notNull(),
+  updatedByUserId: int("updatedByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("staff_service_zones_clinic_staff_zone_unique").on(table.clinicId, table.staffUserId, table.zoneCode),
+  index("staff_service_zones_clinic_staff_idx").on(table.clinicId, table.staffUserId),
 ]);
 export type VisitState = (typeof visitStates)[number];

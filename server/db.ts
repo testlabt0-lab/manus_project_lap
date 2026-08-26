@@ -3,8 +3,11 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, clinicVisitDurationSettings, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { staffWeeklyCapacitySettings } from "../drizzle/schema";
 import { staffServiceSkills } from "../drizzle/schema";
+import { staffServiceZones } from "../drizzle/schema";
 import { staffSkillCodes, type StaffSkillCode } from "../shared/staffSkills";
+import { staffServiceZoneCodes, type StaffServiceZoneCode } from "../shared/staffServiceZones";
 import { isStaffSkillCompatible } from "./staffSkillPolicy";
+import { isStaffServiceZoneCompatible } from "./staffServiceZonePolicy";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { hasAvailabilityOverlap } from "./staffAvailabilityPolicy";
@@ -199,6 +202,44 @@ export async function setVisitRequiredStaffSkill(managerUserId: number, visitId:
   if (!managerMembership) return undefined;
   await db.update(visits).set({ requiredStaffSkill }).where(eq(visits.id, visitId));
   return { visitId, requiredStaffSkill };
+}
+
+export async function listStaffServiceZones(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [managerMembership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  if (!managerMembership) return undefined;
+  const staffRows = await db.select({ staffUserId: clinicMemberships.userId, staffName: users.name, memberRole: clinicMemberships.memberRole }).from(clinicMemberships).innerJoin(users, eq(users.id, clinicMemberships.userId)).where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"])));
+  const zones = await db.select({ staffUserId: staffServiceZones.staffUserId, zoneCode: staffServiceZones.zoneCode }).from(staffServiceZones).where(eq(staffServiceZones.clinicId, clinicId));
+  return staffRows.map(staff => ({ ...staff, zoneCodes: zones.filter(zone => zone.staffUserId === staff.staffUserId).map(zone => zone.zoneCode as StaffServiceZoneCode) }));
+}
+
+export async function setStaffServiceZones(managerUserId: number, clinicId: number, staffUserId: number, zoneCodes: StaffServiceZoneCode[]) {
+  if (zoneCodes.some(zone => !staffServiceZoneCodes.includes(zone))) return undefined;
+  const db = await getDb();
+  if (!db) return undefined;
+  const [managerMembership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  if (!managerMembership) return undefined;
+  const [staffMembership] = await db.select({ userId: clinicMemberships.userId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, staffUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"]))).limit(1);
+  if (!staffMembership) return undefined;
+  const uniqueZones = Array.from(new Set(zoneCodes));
+  await db.transaction(async tx => {
+    await tx.delete(staffServiceZones).where(and(eq(staffServiceZones.clinicId, clinicId), eq(staffServiceZones.staffUserId, staffUserId)));
+    if (uniqueZones.length) await tx.insert(staffServiceZones).values(uniqueZones.map(zoneCode => ({ clinicId, staffUserId, zoneCode, updatedByUserId: managerUserId })));
+  });
+  return { clinicId, staffUserId, zoneCodes: uniqueZones };
+}
+
+export async function setVisitServiceZone(managerUserId: number, visitId: number, serviceZone: StaffServiceZoneCode) {
+  if (!staffServiceZoneCodes.includes(serviceZone)) return undefined;
+  const db = await getDb();
+  if (!db) return undefined;
+  const [visit] = await db.select().from(visits).where(eq(visits.id, visitId)).limit(1);
+  if (!visit || visit.state !== "REQUESTED") return undefined;
+  const [managerMembership] = await db.select({ clinicId: clinicMemberships.clinicId }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, visit.clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
+  if (!managerMembership) return undefined;
+  await db.update(visits).set({ serviceZone }).where(eq(visits.id, visitId));
+  return { visitId, serviceZone };
 }
 
 export async function listManagedNotificationClinics(managerUserId: number) {
@@ -482,6 +523,9 @@ export async function getVisitAssignmentAvailability(managerUserId: number, visi
   const staffSkills = await db.select({ skillCode: staffServiceSkills.skillCode }).from(staffServiceSkills).where(and(eq(staffServiceSkills.clinicId, visit.clinicId), eq(staffServiceSkills.staffUserId, staffUserId)));
   const skillCodes = staffSkills.map(skill => skill.skillCode as StaffSkillCode);
   const isSkillCompatible = isStaffSkillCompatible(visit.requiredStaffSkill as StaffSkillCode, skillCodes);
+  const staffZones = await db.select({ zoneCode: staffServiceZones.zoneCode }).from(staffServiceZones).where(and(eq(staffServiceZones.clinicId, visit.clinicId), eq(staffServiceZones.staffUserId, staffUserId)));
+  const zoneCodes = staffZones.map(zone => zone.zoneCode as StaffServiceZoneCode);
+  const isZoneCompatible = isStaffServiceZoneCompatible(visit.serviceZone as StaffServiceZoneCode, zoneCodes);
   const windows = await db.select().from(staffAvailabilityWindows).where(and(eq(staffAvailabilityWindows.clinicId, visit.clinicId), eq(staffAvailabilityWindows.staffUserId, staffUserId))).orderBy(desc(staffAvailabilityWindows.startAt)).limit(30);
   const activeWindows = windows.filter(window => !window.cancelledAt);
   const visitStart = new Date(visit.scheduledStart);
@@ -490,7 +534,7 @@ export async function getVisitAssignmentAvailability(managerUserId: number, visi
   const assignedVisits = await db.select({ id: visits.id, reference: visits.reference, scheduledStart: visits.scheduledStart, state: visits.state }).from(visitAssignments).innerJoin(visits, eq(visitAssignments.visitId, visits.id)).where(and(eq(visitAssignments.assigneeUserId, staffUserId), eq(visits.clinicId, visit.clinicId)));
   const conflictingVisit = findConflictingAssignedVisit(assignedVisits, visit.id, visitStart, durationMinutes, transitionBufferMinutes);
   const availabilityStatus = activeWindows.length === 0 ? "NOT_CONFIGURED" as const : isCovered ? "AVAILABLE" as const : "OUTSIDE_AVAILABILITY" as const;
-  return { visitId: visit.id, clinicId: visit.clinicId, visitReference: visit.reference, scheduledStart: visitStart, durationMinutes, transitionBufferMinutes, requiredStaffSkill: visit.requiredStaffSkill as StaffSkillCode, staffSkillCodes: skillCodes, status: !isSkillCompatible ? "SKILL_MISMATCH" as const : conflictingVisit ? "ASSIGNMENT_CONFLICT" as const : availabilityStatus, conflictingVisitReference: conflictingVisit?.reference };
+  return { visitId: visit.id, clinicId: visit.clinicId, visitReference: visit.reference, scheduledStart: visitStart, durationMinutes, transitionBufferMinutes, requiredStaffSkill: visit.requiredStaffSkill as StaffSkillCode, staffSkillCodes: skillCodes, serviceZone: visit.serviceZone as StaffServiceZoneCode, staffServiceZones: zoneCodes, status: !isSkillCompatible ? "SKILL_MISMATCH" as const : !isZoneCompatible ? "ZONE_MISMATCH" as const : conflictingVisit ? "ASSIGNMENT_CONFLICT" as const : availabilityStatus, conflictingVisitReference: conflictingVisit?.reference };
 }
 
 export async function getClinicVisitDurationSetting(managerUserId: number, clinicId: number) {
@@ -637,7 +681,7 @@ export async function assignVisit(input: { visitId: number; assignedByUserId: nu
     const assigneeMembership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.assigneeUserId), eq(clinicMemberships.clinicId, current.clinicId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"]))).limit(1))[0];
     if (!isEligibleAssigneeMembership(assigneeMembership, current.clinicId)) return undefined;
     const availability = await getVisitAssignmentAvailability(input.assignedByUserId, current.id, input.assigneeUserId);
-    if (!availability || availability.status === "OUTSIDE_AVAILABILITY" || availability.status === "ASSIGNMENT_CONFLICT" || availability.status === "SKILL_MISMATCH") return undefined;
+    if (!availability || availability.status === "OUTSIDE_AVAILABILITY" || availability.status === "ASSIGNMENT_CONFLICT" || availability.status === "SKILL_MISMATCH" || availability.status === "ZONE_MISMATCH") return undefined;
   }
   await db.transaction(async tx => {
     await tx.insert(visitAssignments).values({ visitId: input.visitId, assignedByUserId: input.assignedByUserId, assigneeLabel: input.assigneeLabel, assigneeUserId: input.assigneeUserId });

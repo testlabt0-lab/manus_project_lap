@@ -9,6 +9,7 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { isAllowedVisitTransition } from "./visitPolicy";
 import { listStaffWeeklyCapacitySettings, setStaffWeeklyCapacitySetting } from "./db";
 import { listStaffServiceSkills, setStaffServiceSkills, setVisitRequiredStaffSkill } from "./db";
+import { listStaffServiceZones, setStaffServiceZones, setVisitServiceZone } from "./db";
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { createPatientNotification, listPatientNotifications, markPatientNotificationRead } from "./patientNotificationDb";
 
@@ -34,6 +35,11 @@ export const appRouter = router({
       if (!result) throw new TRPCError({ code: "FORBIDDEN", message: "Visit skill requirement cannot be updated" });
       return result;
     }),
+    setServiceZone: adminProcedure.input(z.object({ visitId: z.number().int().positive(), serviceZone: z.enum(["CENTRAL", "NORTH", "SOUTH", "EAST", "WEST"]) })).mutation(async ({ ctx, input }) => {
+      const result = await setVisitServiceZone(ctx.user.id, input.visitId, input.serviceZone);
+      if (!result) throw new TRPCError({ code: "FORBIDDEN", message: "Visit service zone cannot be updated" });
+      return result;
+    }),
     getMine: protectedProcedure.input(z.object({ visitId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       const visit = await getVisitForPatient(input.visitId, ctx.user.id);
       if (!visit) throw new TRPCError({ code: "NOT_FOUND" });
@@ -53,6 +59,8 @@ export const appRouter = router({
       if (input.assigneeUserId) {
         const availability = await getVisitAssignmentAvailability(ctx.user.id, input.visitId, input.assigneeUserId);
         if (!availability) throw new TRPCError({ code: "FORBIDDEN", message: "Assignment availability cannot be checked for this clinic" });
+        if (availability.status === "SKILL_MISMATCH") throw new TRPCError({ code: "CONFLICT", message: "The selected staff member does not match the visit skill requirement" });
+        if (availability.status === "ZONE_MISMATCH") throw new TRPCError({ code: "CONFLICT", message: "The selected staff member does not cover the visit service zone" });
         if (availability.status === "OUTSIDE_AVAILABILITY") throw new TRPCError({ code: "CONFLICT", message: "The selected staff member is not available for this visit time" });
         if (availability.status === "ASSIGNMENT_CONFLICT") throw new TRPCError({ code: "CONFLICT", message: "The selected staff member already has an overlapping visit assignment" });
       }
@@ -155,6 +163,18 @@ export const appRouter = router({
       const skills = await setStaffServiceSkills(ctx.user.id, input.clinicId, input.staffUserId, input.skillCodes);
       if (!skills) throw new TRPCError({ code: "FORBIDDEN", message: "Staff skills cannot be updated for this clinic or staff member" });
       return skills;
+    }),
+  }),
+  staffServiceZones: router({
+    list: adminProcedure.input(z.object({ clinicId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const zones = await listStaffServiceZones(ctx.user.id, input.clinicId);
+      if (!zones) throw new TRPCError({ code: "FORBIDDEN", message: "Staff service zones cannot be read for this clinic" });
+      return zones;
+    }),
+    set: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), staffUserId: z.number().int().positive(), zoneCodes: z.array(z.enum(["CENTRAL", "NORTH", "SOUTH", "EAST", "WEST"])).max(5) })).mutation(async ({ ctx, input }) => {
+      const zones = await setStaffServiceZones(ctx.user.id, input.clinicId, input.staffUserId, input.zoneCodes);
+      if (!zones) throw new TRPCError({ code: "FORBIDDEN", message: "Staff service zones cannot be updated for this clinic or staff member" });
+      return zones;
     }),
   }),
   audit: router({
