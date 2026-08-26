@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, like, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
+import { InsertUser, type VisitState, auditEventTypes, auditEvents, clinicMemberships, invoices, managerNotificationAnalyticsSnapshots, managerNotificationPreferences, managerNotifications, medicalReports, patientNotifications, payments, staffAvailabilityWindows, users, visitAssignments, visits, visitStatusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
@@ -330,6 +330,41 @@ export async function listManagedStaffMemberships(managerUserId: number) {
     const staffUser = staffUsers.find(candidate => candidate.id === membership.userId);
     return staffUser ? [{ membershipId: membership.id, userId: staffUser.id, displayName: staffUser.name ?? "عضو فريق", clinicId: membership.clinicId, clinicName: membership.clinicName, memberRole: membership.memberRole, status: membership.status }] : [];
   });
+}
+
+export async function listStaffAvailabilityWindows(managerUserId: number, clinicId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [managerMembership] = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1);
+  if (!managerMembership) return undefined;
+  const windows = await db.select().from(staffAvailabilityWindows).where(eq(staffAvailabilityWindows.clinicId, clinicId)).orderBy(desc(staffAvailabilityWindows.startAt)).limit(30);
+  const staffUserIds = Array.from(new Set(windows.map(window => window.staffUserId)));
+  const staffUsers = staffUserIds.length ? await db.select().from(users).where(inArray(users.id, staffUserIds)) : [];
+  return windows.filter(window => !window.cancelledAt).map(window => ({ ...window, clinicName: managerMembership.clinicName, staffName: staffUsers.find(user => user.id === window.staffUserId)?.name ?? "عضو فريق" }));
+}
+
+export async function createStaffAvailabilityWindow(input: { managerUserId: number; clinicId: number; staffUserId: number; startAt: Date; endAt: Date }) {
+  if (input.startAt >= input.endAt) return undefined;
+  const db = await getDb();
+  if (!db) return undefined;
+  const [managerMembership] = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.managerUserId), eq(clinicMemberships.clinicId, input.clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1);
+  if (!managerMembership) return undefined;
+  const [staffMembership] = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.staffUserId), eq(clinicMemberships.clinicId, input.clinicId), eq(clinicMemberships.status, "ACTIVE"), inArray(clinicMemberships.memberRole, ["CLINICIAN", "NURSE"]))).limit(1);
+  if (!staffMembership) return undefined;
+  const createdAt = new Date();
+  await db.insert(staffAvailabilityWindows).values({ clinicId: input.clinicId, staffUserId: input.staffUserId, startAt: input.startAt, endAt: input.endAt, createdByUserId: input.managerUserId, createdAt });
+  return { clinicId: input.clinicId, clinicName: managerMembership.clinicName, staffUserId: input.staffUserId, startAt: input.startAt, endAt: input.endAt, createdAt };
+}
+
+export async function cancelStaffAvailabilityWindow(managerUserId: number, availabilityWindowId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const [window] = await db.select().from(staffAvailabilityWindows).where(eq(staffAvailabilityWindows.id, availabilityWindowId)).limit(1);
+  if (!window || window.cancelledAt) return false;
+  const [managerMembership] = await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, window.clinicId), eq(clinicMemberships.memberRole, "MANAGER"), eq(clinicMemberships.status, "ACTIVE"))).limit(1);
+  if (!managerMembership) return false;
+  await db.update(staffAvailabilityWindows).set({ cancelledAt: new Date() }).where(eq(staffAvailabilityWindows.id, availabilityWindowId));
+  return true;
 }
 
 export async function listAuditEventsForManager(managerUserId: number, filter: { eventType?: (typeof auditEventTypes)[number]; from?: Date; to?: Date; query?: string; clinicId?: number } = {}) {

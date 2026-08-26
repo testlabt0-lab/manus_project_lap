@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ManagerNotificationCenter } from "./ManagerNotificationCenter";
+import { StaffAvailabilityPage } from "./StaffAvailabilityPage";
 import { NotificationAcknowledgementAudit } from "./NotificationAcknowledgementAudit";
 import { AuditEventDetailsDialog } from "../components/AuditEventDetailsDialog";
 import { canReadPatientVisitOutput, nextVisitState, progressForVisit, visitStateMeta, type VisitState } from "../../../shared/medicare";
@@ -40,7 +41,7 @@ import { DEMO_VISIT } from "../../../shared/mockData";
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/MediCare_Pro_Analytics_Snapshots_Source_eae5074b.zip";
+const PACKAGE_URL = "/manus-storage/MediCare_Pro_Staff_Availability_Source_bda61578.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";
@@ -334,6 +335,7 @@ export default function Home() {
   const page = useMemo(() => {
     if (path === "/book") return <BookingPage navigate={navigate}/>;
     if (path === "/notifications") return <ManagerNotificationCenter navigate={navigate}/>;
+    if (path === "/availability") return <StaffAvailabilityPage navigate={navigate}/>;
     if (path === "/notification-audit") return <NotificationAcknowledgementAudit navigate={navigate}/>;
     if (path.startsWith("/visit/")) return <VisitDetails navigate={navigate} visitState={visitState} setVisitState={setVisitState} visitId={liveVisitId ? Number(liveVisitId) : undefined}/>;
     if (path === "/visits") return <VisitsPage navigate={navigate} visitState={visitState}/>;

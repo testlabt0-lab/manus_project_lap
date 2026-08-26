@@ -139,7 +139,7 @@ export function ManagerNotificationCenter({ navigate }: { navigate: (to: string)
   return <main className="shell page-wrap">
     <div className="page-header">
       <div><h1>مركز الإشعارات</h1><p>تنبيهات داخل التطبيق للزيارات المتأخرة في عيادات المدير.</p></div>
-      <button className="outline-btn" onClick={() => navigate("/operations")}>لوحة التشغيل</button>
+      <div className="flex flex-wrap gap-2"><button className="outline-btn" onClick={() => navigate("/availability")}>توافر الفريق</button><button className="outline-btn" onClick={() => navigate("/operations")}>لوحة التشغيل</button></div>
     </div>
 
     <section className="metric-grid">
