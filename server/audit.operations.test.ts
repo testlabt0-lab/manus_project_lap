@@ -22,9 +22,9 @@ describe("audit operations", () => {
   });
 
   it("returns a safe audit event detail through the current administrator identity", async () => {
-    mocks.getAuditEventDetailsForManager.mockResolvedValue({ id: 41, clinicId: 2, eventType: "VISIT_ASSIGNED", resourceType: "VISIT", resourceId: 9, summary: "تم تكليف الزيارة V-9 بعضو فريق.", createdAt: new Date("2026-08-25T10:00:00.000Z"), actorName: "مدير تجريبي" });
+    mocks.getAuditEventDetailsForManager.mockResolvedValue({ id: 41, clinicId: 2, clinicName: "عيادة الحياة", eventType: "VISIT_ASSIGNED", resourceType: "VISIT", resourceId: 9, summary: "تم تكليف الزيارة V-9 بعضو فريق.", createdAt: new Date("2026-08-25T10:00:00.000Z"), actorName: "مدير تجريبي" });
     const caller = appRouter.createCaller(context("admin"));
-    await expect(caller.audit.getOperation({ eventId: 41 })).resolves.toMatchObject({ id: 41, actorName: "مدير تجريبي" });
+    await expect(caller.audit.getOperation({ eventId: 41 })).resolves.toMatchObject({ id: 41, clinicName: "عيادة الحياة", actorName: "مدير تجريبي" });
     expect(mocks.getAuditEventDetailsForManager).toHaveBeenCalledWith(71, 41);
   });
 

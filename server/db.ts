@@ -321,7 +321,7 @@ export async function listAuditEventsForManager(managerUserId: number, filter: {
   const actorIds = Array.from(new Set(events.map(event => event.actorUserId)));
   if (actorIds.length === 0) return [];
   const actorUsers = await db.select().from(users).where(inArray(users.id, actorIds));
-  return events.map(event => ({ ...event, actorName: actorUsers.find(user => user.id === event.actorUserId)?.name ?? "مستخدم تشغيلي" }));
+  return events.map(event => ({ ...event, clinicName: managerMemberships.find(membership => membership.clinicId === event.clinicId)?.clinicName ?? "عيادة تشغيلية", actorName: actorUsers.find(user => user.id === event.actorUserId)?.name ?? "مستخدم تشغيلي" }));
 }
 
 export async function getAuditEventDetailsForManager(managerUserId: number, eventId: number) {
@@ -333,7 +333,7 @@ export async function getAuditEventDetailsForManager(managerUserId: number, even
   const [event] = await db.select().from(auditEvents).where(and(eq(auditEvents.id, eventId), inArray(auditEvents.clinicId, clinicIds))).limit(1);
   if (!event) return undefined;
   const [actor] = await db.select({ name: users.name }).from(users).where(eq(users.id, event.actorUserId)).limit(1);
-  return { id: event.id, clinicId: event.clinicId, eventType: event.eventType, resourceType: event.resourceType, resourceId: event.resourceId, summary: event.summary, createdAt: event.createdAt, actorName: actor?.name ?? "مستخدم تشغيلي" };
+  return { id: event.id, clinicId: event.clinicId, clinicName: managerMemberships.find(membership => membership.clinicId === event.clinicId)?.clinicName ?? "عيادة تشغيلية", eventType: event.eventType, resourceType: event.resourceType, resourceId: event.resourceId, summary: event.summary, createdAt: event.createdAt, actorName: actor?.name ?? "مستخدم تشغيلي" };
 }
 
 function csvCell(value: unknown) {

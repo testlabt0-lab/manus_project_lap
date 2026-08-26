@@ -12,7 +12,7 @@ import { assignVisit, getAuditEventDetailsForManager, listAssignedVisitsForUser,
 function selectRows(rows: unknown[]) {
   const chain = {
     limit: vi.fn(async () => rows),
-    orderBy: vi.fn(async () => rows),
+    orderBy: vi.fn(() => chain),
     then: (resolve: (value: unknown[]) => unknown, reject?: (reason: unknown) => unknown) => Promise.resolve(rows).then(resolve, reject),
   };
   return { from: vi.fn(() => ({ where: vi.fn(() => chain) })) };
@@ -53,6 +53,15 @@ describe("database membership scope", () => {
 
     await expect(listAuditEventsForManager(2, { clinicId: 9 })).resolves.toEqual([]);
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels each scoped audit event with the active manager clinic name", async () => {
+    mocks.db.select
+      .mockReturnValueOnce(selectRows([{ userId: 2, clinicId: 1, clinicName: "عيادة الحياة", memberRole: "MANAGER", status: "ACTIVE" }]))
+      .mockReturnValueOnce(selectRows([{ id: 31, clinicId: 1, actorUserId: 5, eventType: "VISIT_ASSIGNED", summary: "تم التكليف", createdAt: new Date("2026-08-26T09:00:00.000Z") }]))
+      .mockReturnValueOnce(selectRows([{ id: 5, name: "مدير تجريبي" }]));
+
+    await expect(listAuditEventsForManager(2)).resolves.toMatchObject([{ id: 31, clinicName: "عيادة الحياة", actorName: "مدير تجريبي" }]);
   });
 
   it("returns no audit event detail when the requested event is outside the manager's active clinics", async () => {
