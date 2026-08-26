@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   assignVisit: vi.fn(),
   ensureDemoClinicianForOperationalClinic: vi.fn(),
+  getVisitAssignmentAvailability: vi.fn().mockResolvedValue({ visitId: 78, clinicId: 1, visitReference: "V-000078", scheduledStart: new Date("2026-06-01T08:00:00.000Z"), durationMinutes: 60, status: "AVAILABLE" }),
   listOperationalVisits: vi.fn(),
 }));
 
@@ -10,6 +11,7 @@ vi.mock("./db", () => ({
   assignVisit: mocks.assignVisit,
   createVisitForPatient: vi.fn(),
   ensureDemoClinicianForOperationalClinic: mocks.ensureDemoClinicianForOperationalClinic,
+  getVisitAssignmentAvailability: mocks.getVisitAssignmentAvailability,
   getInvoiceForPatient: vi.fn(),
   getReportForPatient: vi.fn(),
   getVisitById: vi.fn(),

@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, recordDemoPayment, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -43,9 +43,19 @@ export const appRouter = router({
       return visit;
     }),
     assign: adminProcedure.input(z.object({ visitId: z.number().int().positive(), assigneeLabel: z.string().trim().min(2).max(120), assigneeUserId: z.number().int().positive().optional() })).mutation(async ({ ctx, input }) => {
+      if (input.assigneeUserId) {
+        const availability = await getVisitAssignmentAvailability(ctx.user.id, input.visitId, input.assigneeUserId);
+        if (!availability) throw new TRPCError({ code: "FORBIDDEN", message: "Assignment availability cannot be checked for this clinic" });
+        if (availability.status === "OUTSIDE_AVAILABILITY") throw new TRPCError({ code: "CONFLICT", message: "The selected staff member is not available for this visit time" });
+      }
       const visit = await assignVisit({ ...input, assignedByUserId: ctx.user.id });
       if (!visit) throw new TRPCError({ code: "CONFLICT", message: "Visit cannot be assigned in its current state" });
       return visit;
+    }),
+    assignmentAvailability: adminProcedure.input(z.object({ visitId: z.number().int().positive(), staffUserId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const availability = await getVisitAssignmentAvailability(ctx.user.id, input.visitId, input.staffUserId);
+      if (!availability) throw new TRPCError({ code: "FORBIDDEN", message: "Assignment availability cannot be checked for this clinic" });
+      return availability;
     }),
     transition: protectedProcedure.input(z.object({ visitId: z.number().int().positive(), nextState: z.enum(visitStates) })).mutation(async ({ ctx, input }) => {
       const current = await getVisitById(input.visitId);

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   assignVisit: vi.fn(),
   createVisitForPatient: vi.fn(),
   ensureDemoClinicianForOperationalClinic: vi.fn(),
+  getVisitAssignmentAvailability: vi.fn().mockResolvedValue({ visitId: 40, clinicId: 1, visitReference: "V-000040", scheduledStart: new Date("2026-06-01T08:00:00.000Z"), durationMinutes: 60, status: "AVAILABLE" }),
   finalizeReport: vi.fn(),
   getInvoiceForPatient: vi.fn(),
   getReportForPatient: vi.fn(),
