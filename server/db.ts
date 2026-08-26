@@ -5,6 +5,7 @@ import { ENV } from './_core/env';
 import { isEligibleAssigneeMembership } from "./staffPolicy";
 import { hasAvailabilityOverlap } from "./staffAvailabilityPolicy";
 import { DEFAULT_VISIT_DURATION_MINUTES, findConflictingAssignedVisit, transitionBufferOptions, visitDurationOptions, type TransitionBufferMinutes, type VisitDurationMinutes } from "./visitAssignmentPolicy";
+import { summarizeWeeklyWorkloads, type WeeklyAssignmentForWorkload } from "./weeklyWorkloadPolicy";
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { buildVisitCreatedNotification, buildVisitStatusNotification } from "./patientNotificationPolicy";
 import { buildNotificationResponseComparison, buildNotificationResponseReport, buildNotificationResponseThresholdAlert, buildNotificationResponseTrend } from "./notificationResponsePolicy";
@@ -126,7 +127,11 @@ export async function listWeeklyAssignmentsForManager(managerUserId: number, cli
   if (!membership) return undefined;
   const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
   const rows = await db.select({ visitId: visits.id, reference: visits.reference, scheduledStart: visits.scheduledStart, state: visits.state, assigneeUserId: visitAssignments.assigneeUserId, assigneeLabel: visitAssignments.assigneeLabel }).from(visits).innerJoin(visitAssignments, eq(visitAssignments.visitId, visits.id)).where(and(eq(visits.clinicId, clinicId), gte(visits.scheduledStart, weekStart), lt(visits.scheduledStart, weekEnd))).orderBy(visits.scheduledStart).limit(100);
-  return { clinicId, clinicName: membership.clinicName, weekStart, rows };
+  const workloadRows = rows.reduce<WeeklyAssignmentForWorkload[]>((items, row) => {
+    if (row.assigneeUserId !== null) items.push({ assigneeUserId: row.assigneeUserId, assigneeLabel: row.assigneeLabel, state: row.state });
+    return items;
+  }, []);
+  return { clinicId, clinicName: membership.clinicName, weekStart, rows, workloads: summarizeWeeklyWorkloads(workloadRows) };
 }
 
 export async function listManagedNotificationClinics(managerUserId: number) {
