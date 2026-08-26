@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   finalizeReport: vi.fn(),
+  saveReportDraft: vi.fn(),
   recordDemoPayment: vi.fn(),
 }));
 
@@ -10,6 +11,7 @@ vi.mock("./db", () => ({
   createVisitForPatient: vi.fn(),
   ensureDemoClinicianForOperationalClinic: vi.fn(),
   finalizeReport: mocks.finalizeReport,
+  saveReportDraft: mocks.saveReportDraft,
   getInvoiceForPatient: vi.fn(),
   getReportForPatient: vi.fn(),
   getVisitById: vi.fn(),
@@ -31,6 +33,13 @@ function userContext(id: number): TrpcContext {
 }
 
 describe("output mutations", () => {
+  it("passes the template and clinician identity to draft saving", async () => {
+    mocks.saveReportDraft.mockResolvedValue({ id: 6, visitId: 22, templateCode: "NURSING_FOLLOW_UP", status: "DRAFT", summary: "مسودة تجريبية." });
+    const caller = appRouter.createCaller(userContext(31));
+    await expect(caller.outputs.saveReportDraft({ visitId: 22, templateCode: "NURSING_FOLLOW_UP", summary: "مسودة تجريبية." })).resolves.toMatchObject({ status: "DRAFT" });
+    expect(mocks.saveReportDraft).toHaveBeenCalledWith({ visitId: 22, templateCode: "NURSING_FOLLOW_UP", summary: "مسودة تجريبية.", authoredByUserId: 31 });
+  });
+
   it("passes the clinician identity to report finalization", async () => {
     mocks.finalizeReport.mockResolvedValue({ id: 5, visitId: 22, status: "FINALIZED", summary: "تقرير تجريبي مكتمل وآمن." });
     const caller = appRouter.createCaller(userContext(31));

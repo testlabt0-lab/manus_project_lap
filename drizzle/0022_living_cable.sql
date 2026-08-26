@@ -1,0 +1,1 @@
+ALTER TABLE `medical_reports` DROP COLUMN `updatedAt`;

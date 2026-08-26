@@ -184,9 +184,10 @@ export const medicalReports = mysqlTable("medical_reports", {
   id: int("id").autoincrement().primaryKey(),
   visitId: int("visitId").notNull().unique(),
   authoredByUserId: int("authoredByUserId"),
-  status: mysqlEnum("status", ["FINALIZED"]).default("FINALIZED").notNull(),
+  templateCode: varchar("templateCode", { length: 40 }).default("HOME_VISIT").notNull(),
+  status: mysqlEnum("status", ["DRAFT", "FINALIZED"]).default("DRAFT").notNull(),
   summary: text("summary").notNull(),
-  finalizedAt: timestamp("finalizedAt").defaultNow().notNull(),
+  finalizedAt: timestamp("finalizedAt"),
 });
 
 export const invoices = mysqlTable("invoices", {

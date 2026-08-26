@@ -16,6 +16,7 @@ import { summarizeWeeklyWorkloads, type WeeklyAssignmentForWorkload } from "./we
 import { getOverdueVisitAlerts } from "./alertPolicy";
 import { buildVisitCreatedNotification, buildVisitStatusNotification } from "./patientNotificationPolicy";
 import { buildNotificationResponseComparison, buildNotificationResponseReport, buildNotificationResponseThresholdAlert, buildNotificationResponseTrend } from "./notificationResponsePolicy";
+import { clinicalReportTemplateCodes, type ClinicalReportTemplateCode } from "../shared/clinicalReports";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -736,19 +737,42 @@ export async function getInvoiceForPatient(visitId: number, patientId: number) {
   return (await db.select().from(invoices).where(eq(invoices.visitId, visitId)).limit(1))[0];
 }
 
-export async function finalizeReport(input: { visitId: number; authoredByUserId: number; summary: string }) {
+async function getAuthorizedReportContext(input: { visitId: number; authoredByUserId: number }) {
   const db = await getDb();
-  if (!db) throw new Error("Database is not available");
+  if (!db) return undefined;
   const visit = await getVisitById(input.visitId);
   if (!visit || visit.state !== "COMPLETED") return undefined;
   const membership = (await db.select().from(clinicMemberships).where(and(eq(clinicMemberships.userId, input.authoredByUserId), eq(clinicMemberships.clinicId, visit.clinicId), eq(clinicMemberships.memberRole, "CLINICIAN"), eq(clinicMemberships.status, "ACTIVE"))).limit(1))[0];
   if (!membership) return undefined;
   const assignment = (await db.select().from(visitAssignments).where(and(eq(visitAssignments.visitId, input.visitId), eq(visitAssignments.assigneeUserId, input.authoredByUserId))).limit(1))[0];
   if (!assignment) return undefined;
-  const existing = (await db.select().from(medicalReports).where(eq(medicalReports.visitId, input.visitId)).limit(1))[0];
-  if (existing) return undefined;
-  await db.insert(medicalReports).values({ visitId: input.visitId, authoredByUserId: input.authoredByUserId, summary: input.summary });
-  return (await db.select().from(medicalReports).where(eq(medicalReports.visitId, input.visitId)).limit(1))[0];
+  return { db, visit };
+}
+
+export async function saveReportDraft(input: { visitId: number; authoredByUserId: number; templateCode: ClinicalReportTemplateCode; summary: string }) {
+  if (!clinicalReportTemplateCodes.includes(input.templateCode)) return undefined;
+  const context = await getAuthorizedReportContext(input);
+  if (!context) return undefined;
+  const existing = (await context.db.select().from(medicalReports).where(eq(medicalReports.visitId, input.visitId)).limit(1))[0];
+  if (existing?.status === "FINALIZED") return undefined;
+  if (existing) {
+    await context.db.update(medicalReports).set({ authoredByUserId: input.authoredByUserId, templateCode: input.templateCode, summary: input.summary, status: "DRAFT", finalizedAt: null }).where(eq(medicalReports.id, existing.id));
+  } else {
+    await context.db.insert(medicalReports).values({ visitId: input.visitId, authoredByUserId: input.authoredByUserId, templateCode: input.templateCode, summary: input.summary, status: "DRAFT", finalizedAt: null });
+  }
+  return (await context.db.select().from(medicalReports).where(eq(medicalReports.visitId, input.visitId)).limit(1))[0];
+}
+
+export async function finalizeReport(input: { visitId: number; authoredByUserId: number; templateCode?: ClinicalReportTemplateCode; summary: string }) {
+  if (input.templateCode && !clinicalReportTemplateCodes.includes(input.templateCode)) return undefined;
+  const context = await getAuthorizedReportContext(input);
+  if (!context) return undefined;
+  const existing = (await context.db.select().from(medicalReports).where(eq(medicalReports.visitId, input.visitId)).limit(1))[0];
+  if (existing?.status === "FINALIZED") return undefined;
+  const values = { authoredByUserId: input.authoredByUserId, templateCode: input.templateCode ?? existing?.templateCode ?? "HOME_VISIT", summary: input.summary, status: "FINALIZED" as const, finalizedAt: new Date() };
+  if (existing) await context.db.update(medicalReports).set(values).where(eq(medicalReports.id, existing.id));
+  else await context.db.insert(medicalReports).values({ visitId: input.visitId, ...values });
+  return (await context.db.select().from(medicalReports).where(eq(medicalReports.visitId, input.visitId)).limit(1))[0];
 }
 
 export async function recordDemoPayment(visitId: number, patientId: number) {

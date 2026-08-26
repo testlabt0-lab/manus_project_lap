@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditEventTypes, visitStates } from "../drizzle/schema";
-import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, getAuditEventDetailsForManager, getClinicVisitDurationSetting, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, listWeeklyAssignmentsForManager, recordDemoPayment, setClinicVisitDurationSetting, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit, updateStaffAvailabilityWindow } from "./db";
+import { acknowledgeAllManagerNotifications, acknowledgeManagerNotification, assignVisit, cancelStaffAvailabilityWindow, captureManagerNotificationAnalyticsSnapshot, createStaffAvailabilityWindow, createVisitForPatient, ensureDemoClinicianForOperationalClinic, exportAuditEventsCsvForManager, exportManagerNotificationResponseCsv, exportManagerNotificationResponseTrendCsv, finalizeReport, saveReportDraft, getAuditEventDetailsForManager, getClinicVisitDurationSetting, getDb, getInvoiceForPatient, getManagerNotificationResponseComparison, getManagerNotificationResponsePreference, getManagerNotificationResponseReport, getManagerNotificationResponseThresholdAlert, getManagerNotificationResponseTrend, getManagerNotificationThresholdLastChange, getReportForPatient, getVisitAssignmentAvailability, getVisitById, getVisitForPatient, listActiveMembershipsForUser, listAssignedVisitsForUser, listAuditEventsForManager, listManagedNotificationClinics, listManagedStaffMemberships, listManagerNotifications, listManagerNotificationAnalyticsSnapshots, listManagerNotificationThresholdChanges, listOperationalVisits, listStaffAvailabilityWindows, listStaffForOperationalClinics, listVisitsForPatient, listWeeklyAssignmentsForManager, recordDemoPayment, setClinicVisitDurationSetting, setManagedStaffMembershipStatus, setManagerNotificationResponsePreference, transitionVisit, updateStaffAvailabilityWindow } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -262,7 +262,12 @@ export const appRouter = router({
     }),
   }),
   outputs: router({
-    finalizeReport: protectedProcedure.input(z.object({ visitId: z.number().int().positive(), summary: z.string().trim().min(10).max(4000) })).mutation(async ({ ctx, input }) => {
+    saveReportDraft: protectedProcedure.input(z.object({ visitId: z.number().int().positive(), templateCode: z.enum(["HOME_VISIT", "NURSING_FOLLOW_UP", "CHRONIC_CARE"]), summary: z.string().max(4000) })).mutation(async ({ ctx, input }) => {
+      const report = await saveReportDraft({ ...input, authoredByUserId: ctx.user.id });
+      if (!report) throw new TRPCError({ code: "FORBIDDEN", message: "Report draft cannot be saved for this visit" });
+      return report;
+    }),
+    finalizeReport: protectedProcedure.input(z.object({ visitId: z.number().int().positive(), templateCode: z.enum(["HOME_VISIT", "NURSING_FOLLOW_UP", "CHRONIC_CARE"]).optional(), summary: z.string().trim().min(10).max(4000) })).mutation(async ({ ctx, input }) => {
       const report = await finalizeReport({ ...input, authoredByUserId: ctx.user.id });
       if (!report) throw new TRPCError({ code: "FORBIDDEN", message: "Report cannot be finalized for this visit" });
       return report;

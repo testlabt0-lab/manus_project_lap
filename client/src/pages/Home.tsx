@@ -38,10 +38,11 @@ import { NotificationAcknowledgementAudit } from "./NotificationAcknowledgementA
 import { AuditEventDetailsDialog } from "../components/AuditEventDetailsDialog";
 import { canReadPatientVisitOutput, nextVisitState, progressForVisit, visitStateMeta, type VisitState } from "../../../shared/medicare";
 import { DEMO_VISIT } from "../../../shared/mockData";
+import { clinicalReportTemplateCodes, clinicalReportTemplateLabels, clinicalReportTemplateSections, type ClinicalReportTemplateCode } from "../../../shared/clinicalReports";
 
 type Role = "patient" | "manager" | "staff";
 
-const PACKAGE_URL = "/manus-storage/medicare-pro-web-staff-service-zones_9b06d60d.zip";
+const PACKAGE_URL = "/manus-storage/medicare-pro-web-clinical-reports_b33ee77a.zip";
 const DFD_URL = "/manus-storage/medicare-dfd-level1_7cbb25c9.png";
 const SEQUENCE_URL = "/manus-storage/medicare-sequence-visit_7d7ad50e.png";
 const ERD_URL = "/manus-storage/medicare-database-erd_94d6991a.png";
@@ -286,12 +287,17 @@ function ReportComposerPage({ navigate, initialVisitId }: { navigate: (to: strin
   const { isAuthenticated } = useAuth();
   const [visitId, setVisitId] = useState(initialVisitId ? String(initialVisitId) : "");
   const [summary, setSummary] = useState("");
+  const [templateCode, setTemplateCode] = useState<ClinicalReportTemplateCode>("HOME_VISIT");
+  const saveDraft = trpc.outputs.saveReportDraft.useMutation({
+    onSuccess: () => toast.success("تم حفظ مسودة التقرير بأمان.") ,
+    onError: () => toast.error("تعذر حفظ المسودة. تحقق من تكليفك وحالة الزيارة."),
+  });
   const finalize = trpc.outputs.finalizeReport.useMutation({
     onSuccess: () => { toast.success("تم إقفال التقرير النهائي من الخادم."); setSummary(""); },
     onError: () => toast.error("رفض الخادم حفظ التقرير. تحقق من تكليفك وحالة الزيارة."),
   });
   if (!isAuthenticated) return <LockedOutput title="إعداد تقرير نهائي" description="يتطلب إعداد التقرير جلسة فريق طبية موثقة وعضوية فعالة." navigate={navigate}/>;
-  return <main className="shell page-wrap"><div className="page-header"><div><h1>إعداد التقرير النهائي</h1><p>لا يُقفل التقرير إلا لممارس مكلّف بزيارة مكتملة ضمن عيادته.</p></div><button className="outline-btn" onClick={() => navigate("/team")}>مساحة الفريق</button></div><section className="panel mx-auto max-w-3xl"><label className="field-label">معرف الزيارة</label><input className="field-input" inputMode="numeric" value={visitId} onChange={event => setVisitId(event.target.value)} placeholder="مثال: 12"/><label className="field-label mt-5 block">ملخص التقرير</label><textarea className="field-input min-h-40" value={summary} onChange={event => setSummary(event.target.value)} placeholder="اكتب ملخصاً نهائياً تجريبياً للزيارة…"/><div className="mt-5 rounded-xl bg-[#eff9f5] p-4 text-sm leading-7 text-[#3c7062]"><ShieldCheck className="ml-2 inline" size={16}/> يتحقق الخادم من عضوية الممارس وتكليفه بالزيارة قبل الإقفال.</div><button className="primary-btn mt-5" disabled={finalize.isPending || !visitId || summary.trim().length < 10} onClick={() => finalize.mutate({ visitId: Number(visitId), summary })}>{finalize.isPending ? "جارٍ الإقفال…" : "إقفال التقرير النهائي"}</button></section></main>;
+  return <main className="shell page-wrap"><div className="page-header"><div><h1>إعداد التقرير النهائي</h1><p>لا يُقفل التقرير إلا لممارس مكلّف بزيارة مكتملة ضمن عيادته.</p></div><button className="outline-btn" onClick={() => navigate("/team")}>مساحة الفريق</button></div><section className="panel mx-auto max-w-3xl"><label className="field-label">معرف الزيارة</label><input className="field-input" inputMode="numeric" value={visitId} onChange={event => setVisitId(event.target.value)} placeholder="مثال: 12"/><label className="field-label mt-5 block">قالب التقرير</label><select className="field-input mt-2" value={templateCode} onChange={event => setTemplateCode(event.target.value as ClinicalReportTemplateCode)}>{clinicalReportTemplateCodes.map(code => <option key={code} value={code}>{clinicalReportTemplateLabels[code]}</option>)}</select><p className="mt-2 text-xs text-[#6b867e]">الأقسام المقترحة: {clinicalReportTemplateSections[templateCode].join("، ")}</p><label className="field-label mt-5 block">محتوى التقرير التجريبي</label><textarea className="field-input min-h-40" value={summary} onChange={event => setSummary(event.target.value)} placeholder="اكتب ملاحظات التقرير هنا…"/><div className="mt-5 rounded-xl bg-[#eff9f5] p-4 text-sm leading-7 text-[#3c7062]"><ShieldCheck className="ml-2 inline" size={16}/> يحفظ الخادم المسودة أو يقفلها فقط بعد التحقق من عضوية الممارس وتكليفه بالزيارة.</div><div className="mt-5 flex flex-wrap gap-3"><button className="outline-btn" disabled={saveDraft.isPending || !visitId} onClick={() => saveDraft.mutate({ visitId: Number(visitId), templateCode, summary })}>{saveDraft.isPending ? "جارٍ حفظ المسودة…" : "حفظ كمسودة"}</button><button className="primary-btn" disabled={finalize.isPending || !visitId || summary.trim().length < 10} onClick={() => finalize.mutate({ visitId: Number(visitId), templateCode, summary })}>{finalize.isPending ? "جارٍ الإقفال…" : "إقفال التقرير النهائي"}</button></div></section></main>;
 }
 
 function TeamWorkspace({ navigate }: { navigate: (to: string) => void }) {
