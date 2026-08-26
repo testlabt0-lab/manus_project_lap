@@ -121,18 +121,20 @@ export async function listOperationalVisits(userId: number) {
   return db.select().from(visits).where(inArray(visits.clinicId, clinicIds)).orderBy(desc(visits.scheduledStart));
 }
 
-export async function listWeeklyAssignmentsForManager(managerUserId: number, clinicId: number, weekStart: Date) {
+export async function listWeeklyAssignmentsForManager(managerUserId: number, clinicId: number, weekStart: Date, states?: VisitState[]) {
   const db = await getDb();
   if (!db) return undefined;
   const [membership] = await db.select({ clinicId: clinicMemberships.clinicId, clinicName: clinicMemberships.clinicName }).from(clinicMemberships).where(and(eq(clinicMemberships.userId, managerUserId), eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.status, "ACTIVE"), eq(clinicMemberships.memberRole, "MANAGER"))).limit(1);
   if (!membership) return undefined;
   const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const rows = await db.select({ visitId: visits.id, reference: visits.reference, scheduledStart: visits.scheduledStart, state: visits.state, assigneeUserId: visitAssignments.assigneeUserId, assigneeLabel: visitAssignments.assigneeLabel }).from(visits).innerJoin(visitAssignments, eq(visitAssignments.visitId, visits.id)).where(and(eq(visits.clinicId, clinicId), gte(visits.scheduledStart, weekStart), lt(visits.scheduledStart, weekEnd))).orderBy(visits.scheduledStart).limit(100);
+  const conditions = [eq(visits.clinicId, clinicId), gte(visits.scheduledStart, weekStart), lt(visits.scheduledStart, weekEnd)];
+  if (states && states.length > 0) conditions.push(inArray(visits.state, states));
+  const rows = await db.select({ visitId: visits.id, reference: visits.reference, scheduledStart: visits.scheduledStart, state: visits.state, assigneeUserId: visitAssignments.assigneeUserId, assigneeLabel: visitAssignments.assigneeLabel }).from(visits).innerJoin(visitAssignments, eq(visitAssignments.visitId, visits.id)).where(and(...conditions)).orderBy(visits.scheduledStart).limit(100);
   const workloadRows = rows.reduce<WeeklyAssignmentForWorkload[]>((items, row) => {
     if (row.assigneeUserId !== null) items.push({ assigneeUserId: row.assigneeUserId, assigneeLabel: row.assigneeLabel, state: row.state });
     return items;
   }, []);
-  return { clinicId, clinicName: membership.clinicName, weekStart, rows, workloads: summarizeWeeklyWorkloads(workloadRows) };
+  return { clinicId, clinicName: membership.clinicName, weekStart, selectedStates: states ?? [], rows, workloads: summarizeWeeklyWorkloads(workloadRows) };
 }
 
 export async function listStaffWeeklyCapacitySettings(managerUserId: number, clinicId: number) {

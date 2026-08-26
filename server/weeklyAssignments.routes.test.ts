@@ -23,6 +23,14 @@ describe("weekly assignment routes", () => {
     expect(mocks.listWeeklyAssignmentsForManager).toHaveBeenCalledWith(101, 2, weekStart);
   });
 
+  it("passes selected visit states to the scoped weekly query", async () => {
+    const weekStart = new Date("2026-08-24T00:00:00.000Z");
+    mocks.listWeeklyAssignmentsForManager.mockResolvedValue({ clinicId: 2, clinicName: "عيادة تجريبية", weekStart, selectedStates: ["IN_PROGRESS"], rows: [], workloads: [] });
+    const caller = appRouter.createCaller(context("admin"));
+    await expect(caller.assignments.weekly({ clinicId: 2, weekStart, states: ["IN_PROGRESS"] })).resolves.toMatchObject({ selectedStates: ["IN_PROGRESS"] });
+    expect(mocks.listWeeklyAssignmentsForManager).toHaveBeenCalledWith(101, 2, weekStart, ["IN_PROGRESS"]);
+  });
+
   it("rejects weekly assignment access for a non-administrator", async () => {
     const caller = appRouter.createCaller(context("user"));
     await expect(caller.assignments.weekly({ clinicId: 2, weekStart: new Date("2026-08-24T00:00:00.000Z") })).rejects.toMatchObject({ code: "FORBIDDEN" });

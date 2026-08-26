@@ -121,8 +121,8 @@ export const appRouter = router({
     }),
   }),
   assignments: router({
-    weekly: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), weekStart: z.date() })).query(async ({ ctx, input }) => {
-      const result = await listWeeklyAssignmentsForManager(ctx.user.id, input.clinicId, input.weekStart);
+    weekly: adminProcedure.input(z.object({ clinicId: z.number().int().positive(), weekStart: z.date(), states: z.array(z.enum(["REQUESTED", "ASSIGNED", "CONFIRMED", "EN_ROUTE", "ARRIVED", "IN_PROGRESS", "COMPLETED", "CANCELLED"])).max(8).optional() })).query(async ({ ctx, input }) => {
+      const result = input.states ? await listWeeklyAssignmentsForManager(ctx.user.id, input.clinicId, input.weekStart, input.states) : await listWeeklyAssignmentsForManager(ctx.user.id, input.clinicId, input.weekStart);
       if (!result) throw new TRPCError({ code: "FORBIDDEN", message: "Weekly assignments cannot be read for this clinic" });
       return result;
     }),
